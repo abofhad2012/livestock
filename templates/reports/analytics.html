@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Analytics | إحصاء وتحليل</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Arial;margin:0;background:#0b1220;color:#eef4ff}
+    .wrap{width:min(1200px,92%);margin:18px auto}
+    .card{background:rgba(11,23,51,.65);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:16px;margin:12px 0}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.06);color:#eef4ff;text-decoration:none}
+    .btn:hover{background:rgba(255,255,255,.10)}
+    input{height:40px;border-radius:10px;border:1px solid rgba(255,255,255,.10);padding:0 10px}
+    .muted{color:rgba(238,244,255,.7)}
+    .grid{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:10px}
+    .kpi{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:12px}
+    .kpi .k{font-size:12px;color:rgba(238,244,255,.7)}
+    .kpi .v{font-size:18px;font-weight:900;margin-top:6px}
+    .pos{color:#22c55e;font-weight:900}
+    .neg{color:#ef4444;font-weight:900}
+
+    .table-scroll{overflow:auto;border-radius:14px;border:1px solid rgba(255,255,255,.08)}
+    table{width:max(900px,100%);border-collapse:collapse;background:rgba(255,255,255,.03)}
+    th,td{border-bottom:1px solid rgba(255,255,255,.10);padding:10px;text-align:right;white-space:nowrap}
+    th{position:sticky;top:0;background:rgba(11,23,51,.92)}
+    td.metric{font-weight:900}
+
+    canvas{width:100%;height:280px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.08);border-radius:14px}
+    @media (max-width: 900px){ .grid{grid-template-columns:repeat(2,minmax(0,1fr));} }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="row">
+        <div>
+          <h2 style="margin:0">📊 Analytics (أعمدة ذكية)</h2>
+          <div class="muted">الأعمدة تظهر فقط للأنواع/الأصناف التي أدخلها المستخدم في الفترة المختارة</div>
+        </div>
+        <div class="row">
+          <a class="btn" href="/">⬅ الرئيسية</a>
+          <a class="btn" href="/reports/summary/">ملخص</a>
+        </div>
+      </div>
+
+      <form method="get" class="row" style="margin-top:12px;justify-content:flex-start">
+        <div>
+          <span class="muted">من:</span>
+          <input type="date" name="from" value="{{ date_from }}">
+        </div>
+        <div>
+          <span class="muted">إلى:</span>
+          <input type="date" name="to" value="{{ date_to }}">
+        </div>
+        <button class="btn" type="submit">تحديث</button>
+      </form>
+    </div>
+
+    <div class="card">
+      <div class="grid">
+        <div class="kpi"><div class="k">إجمالي المبيعات</div><div class="v">{{ sales_total }} ريال</div></div>
+        <div class="kpi"><div class="k">إجمالي المشتريات</div><div class="v">{{ purchases_total }} ريال</div></div>
+        <div class="kpi"><div class="k">إجمالي المدفوع</div><div class="v">{{ paid_total }} ريال</div></div>
+        <div class="kpi"><div class="k">إجمالي الآجل</div><div class="v">{{ due_total }} ريال</div></div>
+        <div class="kpi"><div class="k">صافي النقد</div><div class="v {% if net_cash >= 0 %}pos{% else %}neg{% endif %}">{{ net_cash }} ريال</div></div>
+        <div class="kpi"><div class="k">ربح تقريبي</div><div class="v {% if net_profit_simple >= 0 %}pos{% else %}neg{% endif %}">{{ net_profit_simple }} ريال</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin:0 0 10px">رسم أعمدة ذكي (شراء مقابل بيع) — حسب الأعمدة الموجودة فقط</h3>
+      <canvas id="bars"></canvas>
+
+      {{ chart_labels|json_script:"labels" }}
+      {{ chart_sales|json_script:"sales" }}
+      {{ chart_purchases|json_script:"purchases" }}
+
+      <div class="muted" style="margin-top:8px">لن يظهر عمود لنوع/صنف لم يُسجل في الفترة.</div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin:0 0 10px">Pivot: أعمدة ذكية</h3>
+
+      {% if categories %}
+      <div class="table-scroll">
+        <table>
+          <tr>
+            <th>المؤشر</th>
+            {% for c in categories %}
+              <th>{{ c.label }}</th>
+            {% endfor %}
+          </tr>
+
+          {% for r in pivot_rows %}
+          <tr>
+            <td class="metric">{{ r.name }}</td>
+            {% for v in r.values %}
+              <td>{{ v }}</td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </table>
+      </div>
+      {% else %}
+        <div class="muted">لا توجد بيانات في الفترة المختارة.</div>
+      {% endif %}
+
+      <div class="muted" style="margin-top:10px">
+        ملاحظة: المخزون هنا “تقديري” من (شراء − بيع) حسب البيانات المسجلة.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function(){
+      const labels = JSON.parse(document.getElementById("labels").textContent);
+      const sales = JSON.parse(document.getElementById("sales").textContent);
+      const purchases = JSON.parse(document.getElementById("purchases").textContent);
+
+      const c = document.getElementById("bars");
+      const ctx = c.getContext("2d");
+
+      const rect = c.getBoundingClientRect();
+      c.width = Math.floor(rect.width * devicePixelRatio);
+      c.height = Math.floor(rect.height * devicePixelRatio);
+      ctx.scale(devicePixelRatio, devicePixelRatio);
+
+      const W = rect.width, H = rect.height;
+      const padL = 44, padR = 16, padT = 18, padB = 52;
+
+      const maxV = Math.max(...sales, ...purchases, 1);
+
+      // axes
+      ctx.clearRect(0,0,W,H);
+      ctx.strokeStyle = "rgba(255,255,255,.18)";
+      ctx.lineWidth = 1;
+
+      ctx.beginPath();
+      ctx.moveTo(padL, padT);
+      ctx.lineTo(padL, H-padB);
+      ctx.lineTo(W-padR, H-padB);
+      ctx.stroke();
+
+      const n = labels.length;
+      if (!n) return;
+
+      const chartW = (W - padL - padR);
+      const chartH = (H - padT - padB);
+      const groupW = chartW / n;
+      const barW = Math.min(18, groupW * 0.28);
+      const gap = Math.min(6, groupW * 0.10);
+
+      function y(v){
+        const t = (v / maxV);
+        return (H - padB) - t * chartH;
+      }
+
+      function drawBar(x, v, color){
+        const yTop = y(v);
+        const hBar = (H - padB) - yTop;
+        ctx.fillStyle = color;
+        ctx.fillRect(x, yTop, barW, hBar);
+        ctx.fillStyle = "rgba(255,255,255,.85)";
+      }
+
+      // bars
+      for (let i=0;i<n;i++){
+        const gx = padL + i*groupW + (groupW/2);
+        const xBuy = gx - barW - (gap/2);
+        const xSell = gx + (gap/2);
+
+        drawBar(xBuy, purchases[i] || 0, "rgba(43,118,198,.95)");   // شراء = أزرق
+        drawBar(xSell, sales[i] || 0, "rgba(34,197,94,.95)");       // بيع = أخضر
+      }
+
+      // labels
+      ctx.fillStyle = "rgba(238,244,255,.85)";
+      ctx.font = "11px system-ui, Segoe UI, Arial";
+      ctx.textAlign = "center";
+      for (let i=0;i<n;i++){
+        const gx = padL + i*groupW + (groupW/2);
+        let t = labels[i] || "";
+        if (t.length > 14) t = t.slice(0, 14) + "…";
+        ctx.fillText(t, gx, H - 26);
+      }
+
+      // legend
+      ctx.textAlign = "right";
+      ctx.fillStyle = "rgba(238,244,255,.85)";
+      ctx.fillText("أزرق=شراء  |  أخضر=بيع", W - padR, 14);
+    })();
+  </script>
+</body>
+</html>

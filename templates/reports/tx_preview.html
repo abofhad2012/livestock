@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>معاينة | {{ tx.reference }}</title>
+  <style>
+    body{font-family:system-ui,Segoe UI,Arial;margin:0;background:#0b1220;color:#eef4ff}
+    .wrap{width:min(900px,92%);margin:18px auto}
+    .card{background:rgba(11,23,51,.65);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:16px}
+    .row{display:flex;gap:10px;flex-wrap:wrap}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.06);color:#eef4ff;text-decoration:none}
+    .btn:hover{background:rgba(255,255,255,.10)}
+    table{width:100%;border-collapse:collapse;margin-top:10px}
+    th,td{border-bottom:1px solid rgba(255,255,255,.10);padding:10px;text-align:right}
+    .muted{color:rgba(238,244,255,.7)}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <div>
+          <h2 style="margin:0">{{ tx.get_tx_type_display }} — {{ tx.reference }}</h2>
+          <div class="muted">التاريخ: {{ tx.date }}</div>
+        </div>
+        <div class="row">
+          <a class="btn" href="/reports/tx/{{ tx.id }}/pdf/" target="_blank">📄 عرض PDF</a>
+          <a class="btn" href="/reports/summary/">📊 التقارير</a>
+          <a class="btn" href="/">⬅ الرئيسية</a>
+        </div>
+      </div>
+
+      <table>
+        <tr><th>نوع المواشي</th><td>{{ line.get_livestock_kind_display }}</td></tr>
+        <tr><th>الصنف</th><td>{% if line.livestock_class != "NONE" %}{{ line.get_livestock_class_display }}{% else %}—{% endif %}</td></tr>
+        <tr><th>الكمية</th><td>{{ line.quantity }}</td></tr>
+        <tr><th>سعر الوحدة</th><td>{{ line.unit_price }} ريال</td></tr>
+        <tr><th>الإجمالي</th><td>{{ tx.total_amount }} ريال</td></tr>
+        <tr><th>طريقة الدفع</th><td>{{ tx.get_payment_mode_display }}</td></tr>
+        <tr><th>المدفوع</th><td>{{ tx.amount_paid }} ريال</td></tr>
+        <tr><th>المتبقي (آجل)</th><td>{{ tx.amount_due }} ريال</td></tr>
+        <tr><th>العميل</th><td>{{ tx.customer_name|default:"—" }}</td></tr>
+        <tr><th>الجوال</th><td>{{ tx.customer_phone|default:"—" }}</td></tr>
+      </table>
+    </div>
+  </div>
+</body>
+</html>

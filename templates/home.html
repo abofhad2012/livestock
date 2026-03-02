@@ -1,0 +1,765 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>محاسبة المواشي</title>
+
+  <style>
+    :root{
+      --bg1:#061022;
+      --bg2:#071735;
+      --panel:#0b1733;
+      --panel2:#081226;
+      --line: rgba(255,255,255,.08);
+
+      --text:#f3f7ff;
+      --muted: rgba(243,247,255,.72);
+
+      --green:#22c55e;
+      --red:#dc2626;
+      --blue:#2b76c6;
+
+      --radius:16px;
+      --shadow: 0 18px 45px rgba(0,0,0,.55);
+    }
+
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(1000px 700px at 80% 20%, rgba(43,118,198,.22), transparent 55%),
+        radial-gradient(900px 650px at 20% 35%, rgba(34,197,94,.12), transparent 55%),
+        linear-gradient(180deg, var(--bg1), var(--bg2));
+    }
+
+    a{color:inherit; text-decoration:none}
+    .page{
+      min-height:100vh;
+      display:flex;
+      flex-direction:column;
+    }
+
+    /* ===== Header (classes used by header.html) ===== */
+    .topbar{
+      width:100%;
+      background: rgba(11,23,51,.55);
+      backdrop-filter: blur(10px);
+      border-bottom:1px solid var(--line);
+    }
+    .topbar-inner{
+      width:min(1200px, 92%);
+      margin:0 auto;
+      padding:10px 0;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:14px;
+      flex-wrap:wrap;
+    }
+    .brand{display:flex; align-items:center; gap:10px}
+    .brand-dot{
+      width:40px;height:40px;border-radius:12px;
+      display:grid; place-items:center;
+      background: rgba(43,118,198,.25);
+      border:1px solid var(--line);
+      box-shadow: var(--shadow);
+    }
+    .brand-name{font-weight:900; color: var(--green);}
+    .topnav{display:flex; gap:10px; flex-wrap:wrap; align-items:center}
+    .navlink{
+      padding:6px 8px;
+      border-radius:10px;
+      border:1px solid transparent;
+      color: var(--muted);
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+    }
+    .navlink:hover{
+      color:var(--text);
+      border-color: var(--line);
+      background: rgba(255,255,255,.04);
+    }
+    .sep{ color: rgba(243,247,255,.35); }
+    .navico.plus{ color: var(--green); font-weight:900; }
+    .navico.minus{ color: var(--red); font-weight:900; }
+
+    /* LAYOUT */
+    .content{
+      width:min(1200px, 92%);
+      margin:0 auto;
+      padding:22px 0 12px;
+      flex: 1;
+      display:flex;
+      align-items:flex-start;
+      justify-content:center;
+    }
+
+    /* SINGLE CARD AREA */
+    .card-area{
+      width: min(520px, 92vw);
+      margin-top: 10px;
+    }
+
+    .op-card{
+      background: rgba(11,23,51,.62);
+      border:1px solid var(--line);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      padding: 18px;
+    }
+
+    .op-title{
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:10px;
+      font-size: 22px;
+      font-weight: 900;
+      margin: 4px 0 14px;
+      letter-spacing:.2px;
+    }
+    .op-title .ico{opacity:.9}
+
+    .field{margin: 10px 0}
+    .label{
+      display:block;
+      margin: 0 0 8px;
+      font-weight: 800;
+      color: var(--text);
+    }
+
+    select, input{
+      width:100%;
+      height: 44px;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: #fff;
+      color:#111827;
+      padding: 0 12px;
+      outline:none;
+    }
+    input::placeholder{color:#6b7280}
+
+    .totalbar{
+      margin-top: 12px;
+      background: rgba(0,0,0,.28);
+      border:1px solid rgba(255,255,255,.06);
+      border-radius: 10px;
+      padding: 12px 12px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:10px;
+      font-weight: 900;
+      color: var(--text);
+    }
+    .totalbar .muted{color:var(--muted); font-weight:800}
+    .totalbar .coin{opacity:.9}
+
+    .hint{
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.7;
+      text-align:center;
+    }
+
+    .btn{
+      width:100%;
+      height: 46px;
+      border:0;
+      border-radius: 10px;
+      margin-top: 12px;
+      font-weight: 900;
+      cursor:pointer;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      gap:10px;
+      color:#081226;
+    }
+    .btn.green{background: var(--green)}
+    .btn.red{background: var(--red); color:#fff}
+    .btn:disabled{opacity:.65; cursor:not-allowed}
+
+    /* TABS */
+    .tabs{
+      display:flex;
+      gap:10px;
+      justify-content:center;
+      margin-bottom: 12px;
+    }
+    .tab{
+      border:1px solid var(--line);
+      background: rgba(255,255,255,.03);
+      color: var(--muted);
+      padding: 8px 12px;
+      border-radius: 999px;
+      cursor:pointer;
+      font-weight: 900;
+    }
+    .tab.active{
+      color: var(--text);
+      background: rgba(43,118,198,.20);
+      border-color: rgba(43,118,198,.35);
+    }
+
+    /* Reports links styling */
+    #reports a{
+      color:#7dd3fc;
+      text-decoration: underline;
+      font-weight: 800;
+    }
+    #reports a:hover{ opacity:.9; }
+
+    /* Footer (اختياري) */
+    .site-footer{ padding: 10px 0 18px; text-align:center; }
+    .footer-line{ width:100%; height:1px; background: rgba(255,255,255,.10); margin: 10px 0 14px; }
+    .footer-text{ color: var(--muted); font-size: 12px; }
+
+    @media (max-width: 520px){
+      .topbar-inner{justify-content:center}
+      .topnav{justify-content:center}
+    }
+  </style>
+</head>
+
+<body>
+  <!-- CSRF token (ضروري لحفظ POST عبر fetch) -->
+  <form style="display:none">{% csrf_token %}</form>
+
+  <div class="page">
+    {% include "header.html" %}
+
+    <main class="content">
+      <div class="card-area">
+
+        <!-- Tabs -->
+        <div class="tabs">
+          <button class="tab active" type="button" data-tab="purchase">شراء</button>
+          <button class="tab" type="button" data-tab="sale">بيع</button>
+        </div>
+
+        <!-- PURCHASE -->
+        <section id="purchase" class="op-card" data-panel="purchase">
+          <div class="op-title">
+            <span class="ico">🛒</span>
+            <span>عملية شراء</span>
+          </div>
+
+          <div class="field">
+            <label class="label">نوع المواشي</label>
+            <select data-p="type">
+              <option value="">---------</option>
+              <option value="SHEEP">غنم</option>
+              <option value="GOAT">ماعز</option>
+
+              <option value="HARRI">طليان (حري)</option>
+              <option value="SAWAKNI">طليان (سواكني)</option>
+              <option value="NAIMI">طليان (نعيمي)</option>
+
+              <option value="CAMEL">إبل</option>
+              <option value="COW">بقر</option>
+            </select>
+          </div>
+
+          <!-- يظهر فقط عند طليان -->
+          <div class="field" data-p="class-wrap" style="display:none;">
+            <label class="label">الصنف (جذع / ثني)</label>
+            <select data-p="class" disabled>
+              <option value="">---------</option>
+              <option value="JADH">جذع</option>
+              <option value="THANI">ثني</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label class="label">الكمية</label>
+            <input type="number" min="0" step="1" value="" data-p="qty">
+          </div>
+
+          <div class="field">
+            <label class="label">سعر الوحدة</label>
+            <input type="number" min="0" step="0.01" value="" data-p="unit">
+          </div>
+
+          <div class="totalbar">
+            <span class="coin">🪙</span>
+            <span class="muted">إجمالي العملية:</span>
+            <span data-p="total">0</span>
+            <span>ريال</span>
+          </div>
+
+          <!-- رصيد قبل الحفظ -->
+          <div class="hint" data-p="stockhint"></div>
+
+          <button class="btn green" type="button" data-p="save">
+            💾 حفظ العملية
+          </button>
+
+          <div class="hint">
+            يتم حساب الإجمالي تلقائيًا = الكمية × سعر الوحدة.
+          </div>
+        </section>
+
+        <!-- SALE -->
+        <section id="sale" class="op-card" data-panel="sale" style="display:none; margin-top:14px;">
+          <div class="op-title">
+            <span class="ico" style="color:#a855f7">—</span>
+            <span>عملية بيع</span>
+          </div>
+
+          <div class="field">
+            <label class="label">نوع المواشي</label>
+            <select data-s="type">
+              <option value="">---------</option>
+              <option value="SHEEP">(0) غنم</option>
+              <option value="GOAT">(0) ماعز</option>
+
+              <option value="HARRI">(0) طليان (حري)</option>
+              <option value="SAWAKNI">(0) طليان (سواكني)</option>
+              <option value="NAIMI">(0) طليان (نعيمي)</option>
+            </select>
+          </div>
+
+          <!-- يظهر فقط عند طليان -->
+          <div class="field" data-s="class-wrap" style="display:none;">
+            <label class="label">الصنف (جذع / ثني)</label>
+            <select data-s="class" disabled>
+              <option value="">---------</option>
+              <option value="JADH">جذع</option>
+              <option value="THANI">ثني</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label class="label">الكمية</label>
+            <input type="number" min="0" step="1" value="" data-s="qty">
+          </div>
+
+          <div class="field">
+            <label class="label">سعر الوحدة</label>
+            <input type="number" min="0" step="0.01" value="" data-s="unit">
+          </div>
+
+          <div class="field">
+            <label class="label">طريقة الدفع</label>
+            <select data-s="paymode">
+              <option value="PAID">مدفوع</option>
+              <option value="CREDIT">بالآجل</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label class="label">المبلغ المدفوع</label>
+            <input type="number" min="0" step="0.01" value="" data-s="paid">
+          </div>
+
+          <div class="field">
+            <label class="label">اسم العميل (اختياري)</label>
+            <input type="text" value="" data-s="customer">
+          </div>
+
+          <div class="field">
+            <label class="label">رقم الجوال (اختياري)</label>
+            <input type="tel" value="" placeholder="05xxxxxxxx" data-s="phone" list="clientPhones">
+            <datalist id="clientPhones"></datalist>
+          </div>
+
+          <div class="totalbar">
+            <span class="coin">🪙</span>
+            <span class="muted">إجمالي البيع:</span>
+            <span data-s="total">0.00</span>
+            <span>ريال</span>
+          </div>
+
+          <!-- رصيد قبل الحفظ -->
+          <div class="hint" data-s="stockhint"></div>
+
+          <div class="hint" data-s="duehint" style="display:none;"></div>
+
+          <button class="btn red" type="button" data-s="save">
+            💾 حفظ عملية البيع
+          </button>
+
+          <div class="hint" id="reports">
+            ✅ التقارير جاهزة الآن:
+            <a href="/reports/summary/" target="_blank" rel="noopener">ملخص</a>
+            ·
+            <a href="/reports/analytics/" target="_blank" rel="noopener">إحصاء</a>
+            · بعد الحفظ سيتم فتح “المعاينة” وبداخلها زر <b>عرض PDF</b> قبل الطباعة.
+          </div>
+        </section>
+
+      </div>
+    </main>
+
+    {% include "footer.html" %}
+  </div>
+
+  <script>
+    (function () {
+      const $ = (sel, root=document) => root.querySelector(sel);
+      const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+
+      // tabs
+      const tabs = $$('[data-tab]');
+      const purchasePanel = $('[data-panel="purchase"]');
+      const salePanel = $('[data-panel="sale"]');
+
+      function setTab(name){
+        tabs.forEach(t => t.classList.toggle('active', t.getAttribute('data-tab') === name));
+        if (name === 'purchase'){
+          purchasePanel.style.display = '';
+          salePanel.style.display = 'none';
+          location.hash = '#purchase';
+        } else {
+          purchasePanel.style.display = 'none';
+          salePanel.style.display = '';
+          location.hash = '#sale';
+        }
+      }
+      tabs.forEach(t => t.addEventListener('click', () => setTab(t.getAttribute('data-tab'))));
+
+      // helpers
+      const toNum = (v) => {
+        const n = Number(v);
+        return Number.isFinite(n) ? n : 0;
+      };
+      const money = (n) => (Math.max(0, toNum(n))).toFixed(2);
+
+      function stripCountLabel(t){
+        return String(t || "").replace(/^\(\s*[\d.]+\s*\)\s*/,"").trim();
+      }
+      function isTlyan(kind){
+        return ["HARRI","SAWAKNI","NAIMI"].includes(kind);
+      }
+
+      // الصنف يظهر فقط لأنواع الطليان
+      const NEED_CLASS_TYPES = new Set(["HARRI", "SAWAKNI", "NAIMI"]);
+      function toggleClassField(typeValue, wrapEl, selectEl) {
+        if (!wrapEl || !selectEl) return;
+        const need = NEED_CLASS_TYPES.has(typeValue);
+        wrapEl.style.display = need ? "" : "none";
+        selectEl.disabled = !need;
+        if (!need) selectEl.value = "";
+      }
+
+      // PURCHASE: type + class
+      const pType = $('[data-p="type"]');
+      const pClassWrap = $('[data-p="class-wrap"]');
+      const pClass = $('[data-p="class"]');
+
+      if (pType) {
+        pType.addEventListener("change", () => toggleClassField(pType.value, pClassWrap, pClass));
+        toggleClassField(pType.value, pClassWrap, pClass);
+      }
+
+      // SALE: type + class
+      const sType = $('[data-s="type"]');
+      const sClassWrap = $('[data-s="class-wrap"]');
+      const sClass = $('[data-s="class"]');
+
+      if (sType) {
+        sType.addEventListener("change", () => toggleClassField(sType.value, sClassWrap, sClass));
+        toggleClassField(sType.value, sClassWrap, sClass);
+      }
+
+      // PURCHASE calc
+      const pQty = $('[data-p="qty"]');
+      const pUnit = $('[data-p="unit"]');
+      const pTotal = $('[data-p="total"]');
+      const pSave = $('[data-p="save"]');
+
+      // SALE calc
+      const sQty = $('[data-s="qty"]');
+      const sUnit = $('[data-s="unit"]');
+      const sPayMode = $('[data-s="paymode"]');
+      const sPaid = $('[data-s="paid"]');
+      const sTotal = $('[data-s="total"]');
+      const sDueHint = $('[data-s="duehint"]');
+      const sSave = $('[data-s="save"]');
+
+      function calcPurchase(){
+        const total = Math.max(0, toNum(pQty?.value)) * Math.max(0, toNum(pUnit?.value));
+        if (pTotal) pTotal.textContent = String(Math.round(total));
+        updateStockHints();
+      }
+
+      function calcSale(){
+        const total = Math.max(0, toNum(sQty?.value)) * Math.max(0, toNum(sUnit?.value));
+        if (sTotal) sTotal.textContent = money(total);
+
+        const mode = sPayMode?.value || 'PAID';
+        if (mode === 'PAID'){
+          if (sPaid){
+            sPaid.value = money(total);
+            sPaid.disabled = true;
+          }
+          if (sDueHint){
+            sDueHint.style.display = 'none';
+            sDueHint.textContent = '';
+          }
+        } else {
+          if (sPaid) sPaid.disabled = false;
+          const paid = Math.max(0, toNum(sPaid?.value));
+          const due = Math.max(0, total - paid);
+          if (sDueHint){
+            sDueHint.style.display = '';
+            sDueHint.textContent = `المتبقي (آجل): ${money(due)} ريال`;
+          }
+        }
+        updateStockHints();
+      }
+
+      [pQty, pUnit].forEach(el => el && el.addEventListener('input', calcPurchase));
+      [sQty, sUnit, sPaid].forEach(el => el && el.addEventListener('input', calcSale));
+      if (sPayMode) sPayMode.addEventListener('change', calcSale);
+
+      calcPurchase();
+      calcSale();
+
+      // ===== CSRF + POST JSON =====
+      function getCookie(name){
+        const v = `; ${document.cookie}`;
+        const parts = v.split(`; ${name}=`);
+        if (parts.length === 2) return parts.pop().split(';').shift();
+        return "";
+      }
+
+      async function postJSON(url, data){
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": getCookie("csrftoken"),
+          },
+          body: JSON.stringify(data),
+        });
+
+        const txt = await res.text();
+        let json = {};
+        try { json = JSON.parse(txt); } catch {}
+        if (!res.ok) throw new Error(json.error || txt || "فشل الطلب");
+        return json;
+      }
+
+      // ===== STOCK + CLIENTS =====
+      let STOCK = {};
+      const phoneInput = document.querySelector('[data-s="phone"]');
+      const nameInput  = document.querySelector('[data-s="customer"]');
+      const dl         = document.getElementById("clientPhones");
+      let phoneMap = new Map();
+      let tmr = null;
+
+      function getStock(kind, cls){
+        const m = STOCK[kind];
+        if (!m) return 0;
+        if (isTlyan(kind)) {
+          if (!cls) return 0;
+          return Number(m[cls] ?? 0);
+        }
+        return Number(m["NONE"] ?? m.total ?? 0);
+      }
+
+      function updateSaleOptionCounts(){
+        if (!sType) return;
+        Array.from(sType.options).forEach(opt=>{
+          const k = opt.value;
+          if (!k) return;
+          const total = Number((STOCK[k] && STOCK[k].total != null) ? STOCK[k].total : 0);
+          opt.textContent = `(${Math.floor(total)}) ${stripCountLabel(opt.textContent)}`;
+        });
+      }
+
+      function updateStockHints(){
+        const pHint = document.querySelector('[data-p="stockhint"]');
+        const sHint = document.querySelector('[data-s="stockhint"]');
+
+        // شراء
+        if (pHint) {
+          const k = pType?.value || "";
+          const c = pClass?.value || "";
+          const q = Number(pQty?.value || 0);
+
+          if (!k) pHint.textContent = "";
+          else if (isTlyan(k) && !c) pHint.textContent = "اختر الصنف (جذع/ثني) لعرض الرصيد.";
+          else {
+            const cur = getStock(k, c);
+            const after = cur + (isFinite(q) ? q : 0);
+            pHint.textContent = `الرصيد الحالي: ${cur} — بعد الشراء: ${after}`;
+          }
+        }
+
+        // بيع
+        if (sHint) {
+          const k = sType?.value || "";
+          const c = sClass?.value || "";
+          const q = Number(sQty?.value || 0);
+
+          if (!k) sHint.textContent = "";
+          else if (isTlyan(k) && !c) sHint.textContent = "اختر الصنف (جذع/ثني) لعرض الرصيد.";
+          else {
+            const cur = getStock(k, c);
+            const after = cur - (isFinite(q) ? q : 0);
+            sHint.textContent = `الرصيد الحالي: ${cur} — بعد البيع: ${after}`;
+          }
+        }
+      }
+
+      async function refreshStock(){
+        try{
+          const res = await fetch("/transactions/api/stock/", { headers: { "Accept":"application/json" }});
+          const j = await res.json();
+          if (j.ok) {
+            STOCK = j.by_kind || {};
+            updateSaleOptionCounts();
+            updateStockHints();
+          }
+        } catch (e) {}
+      }
+
+      async function fetchClients(q){
+        const res = await fetch(`/transactions/api/clients/search/?q=${encodeURIComponent(q)}`);
+        const j = await res.json();
+        if (!j.ok) return;
+
+        phoneMap.clear();
+        if (dl) dl.innerHTML = "";
+        (j.items || []).forEach(it=>{
+          const phone = String(it.phone || "");
+          const name = String(it.name || "");
+          if (!phone) return;
+          phoneMap.set(phone, name);
+          if (dl){
+            const opt = document.createElement("option");
+            opt.value = phone;
+            opt.label = name;
+            dl.appendChild(opt);
+          }
+        });
+
+        if (nameInput && phoneMap.has(phoneInput.value) && !nameInput.value) {
+          nameInput.value = phoneMap.get(phoneInput.value);
+        }
+      }
+
+      if (phoneInput){
+        phoneInput.addEventListener("input", ()=>{
+          clearTimeout(tmr);
+          const q = phoneInput.value.trim();
+          if (q.length < 3) return;
+          tmr = setTimeout(()=> fetchClients(q), 250);
+        });
+        phoneInput.addEventListener("change", ()=>{
+          if (nameInput && phoneMap.has(phoneInput.value) && !nameInput.value) {
+            nameInput.value = phoneMap.get(phoneInput.value);
+          }
+        });
+      }
+
+      [pType, pClass, pQty, sType, sClass, sQty].forEach(el=>{
+        if (!el) return;
+        el.addEventListener("change", updateStockHints);
+        el.addEventListener("input", updateStockHints);
+      });
+
+      // ✅ حفظ الشراء
+      if (pSave){
+        pSave.addEventListener("click", async () => {
+          try{
+            const kind = pType?.value || "";
+            const cls  = pClass?.value || "";
+            const quantity = Number(pQty?.value || 0);
+            const unit_price = Number(pUnit?.value || 0);
+
+            const isT = isTlyan(kind);
+
+            if (!kind) { alert("اختر نوع المواشي"); pType?.focus(); return; }
+            if (isT && !cls) { alert("اختر الصنف (جذع/ثني) للطليان"); pClass?.focus(); return; }
+            if (quantity <= 0) { alert("أدخل الكمية (أكبر من صفر)"); pQty?.focus(); return; }
+            if (unit_price <= 0) { alert("أدخل سعر الوحدة (أكبر من صفر)"); pUnit?.focus(); return; }
+
+            pSave.disabled = true;
+
+            const r = await postJSON("/transactions/api/purchase/", {
+              kind,
+              cls: isT ? cls : "NONE",
+              quantity,
+              unit_price
+            });
+
+            await refreshStock();
+            window.open(r.preview_url, "_blank");
+          } catch(e){
+            alert(String(e.message || e));
+          } finally {
+            pSave.disabled = false;
+          }
+        });
+      }
+
+      // ✅ حفظ البيع
+      if (sSave){
+        sSave.addEventListener("click", async () => {
+          try{
+            const kind = sType?.value || "";
+            const cls  = sClass?.value || "";
+            const quantity = Number(sQty?.value || 0);
+            const unit_price = Number(sUnit?.value || 0);
+
+            const isT = isTlyan(kind);
+
+            if (!kind) { alert("اختر نوع المواشي"); sType?.focus(); return; }
+            if (isT && !cls) { alert("اختر الصنف (جذع/ثني) للطليان"); sClass?.focus(); return; }
+            if (quantity <= 0) { alert("أدخل الكمية (أكبر من صفر)"); sQty?.focus(); return; }
+            if (unit_price <= 0) { alert("أدخل سعر الوحدة (أكبر من صفر)"); sUnit?.focus(); return; }
+
+            const payment_mode = (sPayMode?.value || "PAID");
+            const paid_amount = Number(sPaid?.value || 0);
+
+            const customer_name = String(document.querySelector('[data-s="customer"]')?.value || "");
+            const customer_phone = String(document.querySelector('[data-s="phone"]')?.value || "");
+
+            // شرط الآجل (Front)
+            if (payment_mode === "CREDIT" && !customer_phone.trim()){
+              alert("رقم الجوال مطلوب عند البيع بالآجل");
+              phoneInput?.focus();
+              return;
+            }
+
+            sSave.disabled = true;
+
+            const r = await postJSON("/transactions/api/sale/", {
+              kind,
+              cls: isT ? cls : "NONE",
+              quantity,
+              unit_price,
+              payment_mode,
+              paid_amount,
+              customer_name,
+              customer_phone
+            });
+
+            await refreshStock();
+            window.open(r.preview_url, "_blank");
+          } catch(e){
+            alert(String(e.message || e));
+          } finally {
+            sSave.disabled = false;
+          }
+        });
+      }
+
+      // init
+      if (location.hash === '#sale') setTab('sale');
+      refreshStock();
+    })();
+  </script>
+</body>
+</html>
