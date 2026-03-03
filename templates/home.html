@@ -19,6 +19,7 @@
       --green:#22c55e;
       --red:#dc2626;
       --blue:#2b76c6;
+      --amber:#f59e0b;
 
       --radius:16px;
       --shadow: 0 18px 45px rgba(0,0,0,.55);
@@ -185,7 +186,18 @@
     }
     .btn.green{background: var(--green)}
     .btn.red{background: var(--red); color:#fff}
+    .btn.blue{background: var(--blue); color:#fff}
     .btn:disabled{opacity:.65; cursor:not-allowed}
+
+    .btn.small{
+      height: 34px;
+      margin-top: 0;
+      font-size: 13px;
+      border-radius: 10px;
+      padding: 0 10px;
+      width: auto;
+      display:inline-flex;
+    }
 
     /* TABS */
     .tabs{
@@ -193,6 +205,7 @@
       gap:10px;
       justify-content:center;
       margin-bottom: 12px;
+      flex-wrap:wrap;
     }
     .tab{
       border:1px solid var(--line);
@@ -217,6 +230,78 @@
     }
     #reports a:hover{ opacity:.9; }
 
+    /* Trader / Aging UI */
+    .row{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .pill{
+      border:1px solid var(--line);
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-weight: 900;
+      cursor:pointer;
+    }
+    .pill:hover{ opacity:.92; }
+
+    .stats{
+      display:grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap:10px;
+      margin-top: 10px;
+    }
+    .stat{
+      background: rgba(0,0,0,.22);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius: 12px;
+      padding: 10px;
+      text-align:center;
+    }
+    .stat .k{ color: var(--muted); font-weight:900; font-size: 12px; }
+    .stat .v{ margin-top: 6px; font-weight: 900; font-size: 16px; }
+    .stat .v.danger{ color: #fecaca; }
+    .stat .v.warn{ color: #fde68a; }
+
+    .table{
+      width:100%;
+      border-collapse: collapse;
+      margin-top: 8px;
+      overflow:hidden;
+      border-radius: 12px;
+      border:1px solid rgba(255,255,255,.08);
+    }
+    .table th, .table td{
+      padding: 10px 10px;
+      border-bottom:1px solid rgba(255,255,255,.08);
+      font-size: 13px;
+      vertical-align: middle;
+    }
+    .table th{
+      text-align:right;
+      color: var(--muted);
+      font-weight: 900;
+      background: rgba(255,255,255,.03);
+    }
+    .table tr:last-child td{ border-bottom: 0; }
+    .table td.actions{ white-space: nowrap; text-align:left; }
+    .badge{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding: 4px 10px;
+      border-radius: 999px;
+      border:1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.04);
+      color: var(--text);
+      font-weight: 900;
+      font-size: 12px;
+    }
+
     /* Footer (اختياري) */
     .site-footer{ padding: 10px 0 18px; text-align:center; }
     .footer-line{ width:100%; height:1px; background: rgba(255,255,255,.10); margin: 10px 0 14px; }
@@ -225,6 +310,7 @@
     @media (max-width: 520px){
       .topbar-inner{justify-content:center}
       .topnav{justify-content:center}
+      .stats{ grid-template-columns: 1fr; }
     }
   </style>
 </head>
@@ -243,6 +329,7 @@
         <div class="tabs">
           <button class="tab active" type="button" data-tab="purchase">شراء</button>
           <button class="tab" type="button" data-tab="sale">بيع</button>
+          <button class="tab" type="button" data-tab="collections">تحصيل</button>
         </div>
 
         <!-- PURCHASE -->
@@ -291,7 +378,7 @@
           <div class="totalbar">
             <span class="coin">🪙</span>
             <span class="muted">إجمالي العملية:</span>
-            <span data-p="total">0</span>
+            <span data-p="total">0.00</span>
             <span>ريال</span>
           </div>
 
@@ -361,6 +448,24 @@
           </div>
 
           <div class="field">
+            <label class="label">طريقة السداد (للجزء المدفوع)</label>
+            <select data-s="method">
+              <option value="CASH">نقدي</option>
+              <option value="TRANSFER">تحويل</option>
+              <option value="OTHER">أخرى</option>
+            </select>
+          </div>
+
+          <!-- يظهر فقط عند الآجل -->
+          <div class="field" data-s="due-wrap" style="display:none;">
+            <label class="label">تاريخ الاستحقاق (للآجل)</label>
+            <input type="date" data-s="due">
+            <div class="hint" style="text-align:right; margin-top:6px">
+              إذا تركته فارغًا سيتم تحديده تلقائيًا بعد 30 يوم.
+            </div>
+          </div>
+
+          <div class="field">
             <label class="label">اسم العميل (اختياري)</label>
             <input type="text" value="" data-s="customer">
           </div>
@@ -396,6 +501,41 @@
           </div>
         </section>
 
+        <!-- COLLECTIONS / AGING -->
+        <section id="collections" class="op-card" data-panel="collections" style="display:none; margin-top:14px;">
+          <div class="row" style="margin-bottom: 8px;">
+            <div class="op-title" style="margin:0; justify-content:flex-start;">
+              <span class="ico">💰</span>
+              <span>التحصيل والمتأخرات</span>
+            </div>
+
+            <button class="pill" type="button" id="agingRefreshBtn">تحديث</button>
+          </div>
+
+          <div class="hint" id="agingMeta" style="text-align:right;">
+            يعتمد على: عمليات البيع الآجل (amount_due &gt; 0) + تاريخ الاستحقاق (due_date).
+          </div>
+
+          <div class="stats" id="agingStats">
+            <div class="stat"><div class="k">غير مستحق</div><div class="v" data-a="current">0.00</div></div>
+            <div class="stat"><div class="k">1–30 يوم</div><div class="v warn" data-a="1_30">0.00</div></div>
+            <div class="stat"><div class="k">31–60 يوم</div><div class="v warn" data-a="31_60">0.00</div></div>
+            <div class="stat"><div class="k">61–90 يوم</div><div class="v danger" data-a="61_90">0.00</div></div>
+            <div class="stat"><div class="k">+91 يوم</div><div class="v danger" data-a="91_plus">0.00</div></div>
+            <div class="stat"><div class="k">الإجمالي الآجل</div><div class="v" data-a="all">0.00</div></div>
+          </div>
+
+          <div class="field" style="margin-top: 14px;">
+            <label class="label">أكثر العملاء تأخرًا</label>
+            <div id="agingTopWrap" class="hint" style="text-align:right;">—</div>
+          </div>
+
+          <div class="field" style="margin-top: 14px;">
+            <label class="label">أحدث المعاملات الآجلة</label>
+            <div id="agingTxWrap" class="hint" style="text-align:right;">—</div>
+          </div>
+        </section>
+
       </div>
     </main>
 
@@ -407,26 +547,26 @@
       const $ = (sel, root=document) => root.querySelector(sel);
       const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
 
-      // tabs
+      // ===== Tabs (3 panels) =====
       const tabs = $$('[data-tab]');
-      const purchasePanel = $('[data-panel="purchase"]');
-      const salePanel = $('[data-panel="sale"]');
+      const panels = $$('[data-panel]');
+      const panelByName = new Map(panels.map(p => [p.getAttribute('data-panel'), p]));
 
       function setTab(name){
         tabs.forEach(t => t.classList.toggle('active', t.getAttribute('data-tab') === name));
-        if (name === 'purchase'){
-          purchasePanel.style.display = '';
-          salePanel.style.display = 'none';
-          location.hash = '#purchase';
-        } else {
-          purchasePanel.style.display = 'none';
-          salePanel.style.display = '';
-          location.hash = '#sale';
+        panels.forEach(p => p.style.display = 'none');
+        const target = panelByName.get(name);
+        if (target) target.style.display = '';
+        location.hash = '#' + name;
+
+        // عند فتح تبويب التحصيل: حدّث البيانات
+        if (name === 'collections'){
+          refreshAging();
         }
       }
       tabs.forEach(t => t.addEventListener('click', () => setTab(t.getAttribute('data-tab'))));
 
-      // helpers
+      // ===== helpers =====
       const toNum = (v) => {
         const n = Number(v);
         return Number.isFinite(n) ? n : 0;
@@ -438,6 +578,19 @@
       }
       function isTlyan(kind){
         return ["HARRI","SAWAKNI","NAIMI"].includes(kind);
+      }
+
+      // local date helpers (avoid UTC shift)
+      function fmtLocalISO(d){
+        const y = d.getFullYear();
+        const m = String(d.getMonth()+1).padStart(2,'0');
+        const dd = String(d.getDate()).padStart(2,'0');
+        return `${y}-${m}-${dd}`;
+      }
+      function addDays(d, days){
+        const x = new Date(d.getTime());
+        x.setDate(x.getDate() + days);
+        return x;
       }
 
       // الصنف يظهر فقط لأنواع الطليان
@@ -481,13 +634,16 @@
       const sUnit = $('[data-s="unit"]');
       const sPayMode = $('[data-s="paymode"]');
       const sPaid = $('[data-s="paid"]');
+      const sMethod = $('[data-s="method"]');
       const sTotal = $('[data-s="total"]');
       const sDueHint = $('[data-s="duehint"]');
+      const sDueWrap = $('[data-s="due-wrap"]');
+      const sDue = $('[data-s="due"]');
       const sSave = $('[data-s="save"]');
 
       function calcPurchase(){
         const total = Math.max(0, toNum(pQty?.value)) * Math.max(0, toNum(pUnit?.value));
-        if (pTotal) pTotal.textContent = String(Math.round(total));
+        if (pTotal) pTotal.textContent = money(total);
         updateStockHints();
       }
 
@@ -496,6 +652,7 @@
         if (sTotal) sTotal.textContent = money(total);
 
         const mode = sPayMode?.value || 'PAID';
+
         if (mode === 'PAID'){
           if (sPaid){
             sPaid.value = money(total);
@@ -505,15 +662,32 @@
             sDueHint.style.display = 'none';
             sDueHint.textContent = '';
           }
+          if (sDueWrap) sDueWrap.style.display = 'none';
+          if (sDue) sDue.value = "";
         } else {
           if (sPaid) sPaid.disabled = false;
+
           const paid = Math.max(0, toNum(sPaid?.value));
           const due = Math.max(0, total - paid);
+
           if (sDueHint){
             sDueHint.style.display = '';
             sDueHint.textContent = `المتبقي (آجل): ${money(due)} ريال`;
           }
+
+          // due_date يظهر فقط إذا فيه متبقي
+          if (sDueWrap) sDueWrap.style.display = (due > 0) ? '' : 'none';
+
+          // ضع تاريخ افتراضي (اليوم + 30) إن كان فارغًا
+          if (due > 0 && sDue && !sDue.value){
+            const d = addDays(new Date(), 30);
+            sDue.value = fmtLocalISO(d);
+          }
+
+          // إذا صار due = 0 نخفي due_date
+          if (due <= 0 && sDue) sDue.value = "";
         }
+
         updateStockHints();
       }
 
@@ -524,12 +698,21 @@
       calcPurchase();
       calcSale();
 
-      // ===== CSRF + POST JSON =====
+      // ===== CSRF + JSON helpers =====
       function getCookie(name){
         const v = `; ${document.cookie}`;
         const parts = v.split(`; ${name}=`);
         if (parts.length === 2) return parts.pop().split(';').shift();
         return "";
+      }
+
+      async function getJSON(url){
+        const res = await fetch(url, { headers: { "Accept":"application/json" }});
+        const txt = await res.text();
+        let j = {};
+        try { j = JSON.parse(txt); } catch {}
+        if (!res.ok) throw new Error(j.error || txt || "فشل الطلب");
+        return j;
       }
 
       async function postJSON(url, data){
@@ -545,7 +728,18 @@
         const txt = await res.text();
         let json = {};
         try { json = JSON.parse(txt); } catch {}
-        if (!res.ok) throw new Error(json.error || txt || "فشل الطلب");
+        if (!res.ok) {
+          // تحسين رسالة خطأ حد الائتمان إن توفرت حقول إضافية
+          if (json && json.error && (json.outstanding || json.credit_limit || json.projected)){
+            const extra = [
+              json.outstanding != null ? `المستحق الحالي: ${json.outstanding}` : null,
+              json.credit_limit != null ? `حد الائتمان: ${json.credit_limit}` : null,
+              json.projected != null ? `بعد العملية: ${json.projected}` : null,
+            ].filter(Boolean).join("\n");
+            throw new Error(json.error + (extra ? ("\n\n" + extra) : ""));
+          }
+          throw new Error((json && json.error) || txt || "فشل الطلب");
+        }
         return json;
       }
 
@@ -614,8 +808,7 @@
 
       async function refreshStock(){
         try{
-          const res = await fetch("/transactions/api/stock/", { headers: { "Accept":"application/json" }});
-          const j = await res.json();
+          const j = await getJSON("/transactions/api/stock/");
           if (j.ok) {
             STOCK = j.by_kind || {};
             updateSaleOptionCounts();
@@ -625,8 +818,7 @@
       }
 
       async function fetchClients(q){
-        const res = await fetch(`/transactions/api/clients/search/?q=${encodeURIComponent(q)}`);
-        const j = await res.json();
+        const j = await getJSON(`/transactions/api/clients/search/?q=${encodeURIComponent(q)}`);
         if (!j.ok) return;
 
         phoneMap.clear();
@@ -644,7 +836,7 @@
           }
         });
 
-        if (nameInput && phoneMap.has(phoneInput.value) && !nameInput.value) {
+        if (nameInput && phoneInput && phoneMap.has(phoneInput.value) && !nameInput.value) {
           nameInput.value = phoneMap.get(phoneInput.value);
         }
       }
@@ -657,7 +849,7 @@
           tmr = setTimeout(()=> fetchClients(q), 250);
         });
         phoneInput.addEventListener("change", ()=>{
-          if (nameInput && phoneMap.has(phoneInput.value) && !nameInput.value) {
+          if (nameInput && phoneInput && phoneMap.has(phoneInput.value) && !nameInput.value) {
             nameInput.value = phoneMap.get(phoneInput.value);
           }
         });
@@ -669,7 +861,171 @@
         el.addEventListener("input", updateStockHints);
       });
 
-      // ✅ حفظ الشراء
+      // ===== Trader: Aging UI =====
+      const agingRefreshBtn = document.getElementById("agingRefreshBtn");
+      const agingMeta = document.getElementById("agingMeta");
+      const agingTopWrap = document.getElementById("agingTopWrap");
+      const agingTxWrap = document.getElementById("agingTxWrap");
+
+      function setAgingValue(key, v){
+        const el = document.querySelector(`[data-a="${key}"]`);
+        if (el) el.textContent = money(v);
+      }
+
+      function renderAging(j){
+        const totals = (j && j.totals) || {};
+        const cur = toNum(totals.current);
+        const b1 = toNum(totals["1_30"]);
+        const b2 = toNum(totals["31_60"]);
+        const b3 = toNum(totals["61_90"]);
+        const b4 = toNum(totals["91_plus"]);
+        const all = cur + b1 + b2 + b3 + b4;
+
+        setAgingValue("current", cur);
+        setAgingValue("1_30", b1);
+        setAgingValue("31_60", b2);
+        setAgingValue("61_90", b3);
+        setAgingValue("91_plus", b4);
+        setAgingValue("all", all);
+
+        if (agingMeta){
+          agingMeta.textContent = `آخر تحديث: ${j.as_of || ""} — إجمالي الآجل: ${money(all)} ريال`;
+        }
+
+        // Top overdue clients
+        const top = (j && j.top_overdue_counterparties) || [];
+        if (!top.length){
+          agingTopWrap.innerHTML = '<div class="hint" style="text-align:right;">لا توجد ذمم متأخرة الآن ✅</div>';
+        } else {
+          const rows = top.map(it => {
+            const id = it.id;
+            const name = (it.name || "").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+            const phone = (it.phone || "").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+            const amt = money(it.overdue_amount);
+            const days = it.max_days ?? 0;
+            return `
+              <tr>
+                <td>${name}<div style="color:var(--muted); font-size:12px; margin-top:4px;">${phone || "—"}</div></td>
+                <td><span class="badge">متأخر ${days} يوم</span></td>
+                <td>${amt}</td>
+                <td class="actions">
+                  <button class="btn small blue" type="button" data-wa="${id}">واتساب</button>
+                  <button class="btn small" style="background:rgba(255,255,255,.10); color:var(--text); border:1px solid var(--line);" type="button" data-copy="${id}">نسخ</button>
+                </td>
+              </tr>
+            `;
+          }).join("");
+
+          agingTopWrap.innerHTML = `
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>العميل</th>
+                  <th>الحالة</th>
+                  <th>المتأخر (ريال)</th>
+                  <th style="text-align:left;">إجراء</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          `;
+
+          // bind actions
+          $$('[data-wa]', agingTopWrap).forEach(btn => {
+            btn.addEventListener('click', async () => {
+              const id = btn.getAttribute('data-wa');
+              try{
+                btn.disabled = true;
+                const r = await getJSON(`/transactions/api/clients/${id}/whatsapp-reminder/`);
+                if (!r.ok) throw new Error(r.error || "فشل");
+                if (!r.wa_link) { alert("لا يوجد رقم جوال لهذا العميل."); return; }
+                window.open(r.wa_link, "_blank", "noopener");
+              } catch(e){
+                alert(String(e.message || e));
+              } finally {
+                btn.disabled = false;
+              }
+            });
+          });
+
+          $$('[data-copy]', agingTopWrap).forEach(btn => {
+            btn.addEventListener('click', async () => {
+              const id = btn.getAttribute('data-copy');
+              try{
+                btn.disabled = true;
+                const r = await getJSON(`/transactions/api/clients/${id}/whatsapp-reminder/`);
+                if (!r.ok) throw new Error(r.error || "فشل");
+                const msg = r.message || "";
+                if (!msg) { alert("لا توجد رسالة."); return; }
+                await navigator.clipboard.writeText(msg);
+                alert("✅ تم نسخ الرسالة");
+              } catch(e){
+                alert(String(e.message || e));
+              } finally {
+                btn.disabled = false;
+              }
+            });
+          });
+        }
+
+        // open transactions (short list)
+        const txs = (j && j.open_transactions) || [];
+        if (!txs.length){
+          agingTxWrap.innerHTML = '<div class="hint" style="text-align:right;">لا توجد معاملات آجلة.</div>';
+        } else {
+          const rows = txs.slice(0, 10).map(tx => {
+            const ref = (tx.reference || `TX#${tx.id}`).replace(/</g,"&lt;").replace(/>/g,"&gt;");
+            const cp = (tx.counterparty_name || "").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+            const due = (tx.due_date || "").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+            const days = tx.days_past_due ?? 0;
+            const amt = money(tx.amount_due);
+            return `
+              <tr>
+                <td>${ref}<div style="color:var(--muted); font-size:12px; margin-top:4px;">${cp || "—"}</div></td>
+                <td>${due}<div style="color:var(--muted); font-size:12px; margin-top:4px;">${days > 0 ? `متأخر ${days} يوم` : "غير مستحق"}</div></td>
+                <td>${amt}</td>
+                <td class="actions">
+                  <a class="btn small" style="background:rgba(255,255,255,.10); color:var(--text); border:1px solid var(--line);" href="/reports/tx/${tx.id}/" target="_blank" rel="noopener">عرض</a>
+                </td>
+              </tr>
+            `;
+          }).join("");
+
+          agingTxWrap.innerHTML = `
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>المعاملة</th>
+                  <th>الاستحقاق</th>
+                  <th>المتبقي (ريال)</th>
+                  <th style="text-align:left;">إجراء</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          `;
+        }
+      }
+
+      async function refreshAging(){
+        try{
+          agingTopWrap.textContent = "⏳ جاري التحديث...";
+          agingTxWrap.textContent = "⏳ جاري التحديث...";
+          const j = await getJSON("/transactions/api/ar/aging/");
+          if (!j.ok) throw new Error(j.error || "فشل");
+          renderAging(j);
+        } catch(e){
+          const msg = String(e.message || e);
+          agingTopWrap.innerHTML = `<div class="hint" style="text-align:right;">❌ ${msg}</div>`;
+          agingTxWrap.innerHTML = `<div class="hint" style="text-align:right;">—</div>`;
+        }
+      }
+
+      if (agingRefreshBtn){
+        agingRefreshBtn.addEventListener('click', refreshAging);
+      }
+
+      // ===== Save Purchase =====
       if (pSave){
         pSave.addEventListener("click", async () => {
           try{
@@ -695,7 +1051,7 @@
             });
 
             await refreshStock();
-            window.open(r.preview_url, "_blank");
+            window.open(r.preview_url, "_blank", "noopener");
           } catch(e){
             alert(String(e.message || e));
           } finally {
@@ -704,7 +1060,7 @@
         });
       }
 
-      // ✅ حفظ البيع
+      // ===== Save Sale =====
       if (sSave){
         sSave.addEventListener("click", async () => {
           try{
@@ -722,9 +1078,13 @@
 
             const payment_mode = (sPayMode?.value || "PAID");
             const paid_amount = Number(sPaid?.value || 0);
+            const method = (sMethod?.value || "CASH");
 
             const customer_name = String(document.querySelector('[data-s="customer"]')?.value || "");
             const customer_phone = String(document.querySelector('[data-s="phone"]')?.value || "");
+
+            // تاريخ الاستحقاق (اختياري)
+            const due_date = (sDue && sDueWrap && sDueWrap.style.display !== 'none') ? (sDue.value || null) : null;
 
             // شرط الآجل (Front)
             if (payment_mode === "CREDIT" && !customer_phone.trim()){
@@ -742,12 +1102,19 @@
               unit_price,
               payment_mode,
               paid_amount,
+              method,
+              due_date,
               customer_name,
               customer_phone
             });
 
             await refreshStock();
-            window.open(r.preview_url, "_blank");
+
+            // بعد البيع: افتح المعاينة + حدّث تحصيل (لو كنت على تبويب التحصيل)
+            window.open(r.preview_url, "_blank", "noopener");
+            if (location.hash === "#collections"){
+              refreshAging();
+            }
           } catch(e){
             alert(String(e.message || e));
           } finally {
@@ -757,7 +1124,12 @@
       }
 
       // init
-      if (location.hash === '#sale') setTab('sale');
+      const hash = (location.hash || "").replace("#","");
+      if (hash === 'sale' || hash === 'collections' || hash === 'purchase'){
+        setTab(hash);
+      } else {
+        setTab('purchase');
+      }
       refreshStock();
     })();
   </script>
