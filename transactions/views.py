@@ -28,11 +28,10 @@ from .models import (
     TransactionType,
 )
 
-
 # =========================
 # Helpers
 # =========================
-DEFAULT_TERMS_DAYS = 30
+DEFAULT_TERMS_DAYS = 30  # ✅ شهر افتراضي
 
 
 def _get_farm_for_user(user):
@@ -310,9 +309,10 @@ def api_ar_aging(request):
 @permission_required("transactions.view_transaction", raise_exception=True)
 def api_client_whatsapp_reminder(request, pk: int):
     """
-    رسالة واتساب جاهزة للعميل المتأخر + تنسيق مبالغ (بدون .00 وبفواصل)
+    رسالة واتساب جاهزة للعميل المتأخر + تنسيق مبالغ 60,000
     """
-    from django.utils.formats import number_format
+    def fmt0(x: Decimal) -> str:
+        return f"{Decimal(x):,.0f}"
 
     farm = _get_farm_for_user(request.user)
     if not farm:
@@ -345,14 +345,12 @@ def api_client_whatsapp_reminder(request, pk: int):
             amt = Decimal(tx.amount_due or 0)
             total_overdue += amt
             ref = tx.reference or f"TX#{tx.id}"
-            amt_txt = number_format(amt, decimal_pos=0, force_grouping=True)
-            lines.append(f"- {ref}: {amt_txt} ريال (استحقاق {due})")
+            lines.append(f"- {ref}: {fmt0(amt)} ريال (استحقاق {due})")
 
     if total_overdue > 0:
-        total_txt = number_format(total_overdue, decimal_pos=0, force_grouping=True)
         msg = (
             f"السلام عليكم {cp.name}،\n"
-            f"نذكّركم بوجود مستحقات متأخرة بقيمة {total_txt} ريال.\n"
+            f"نذكّركم بوجود مستحقات متأخرة بقيمة {fmt0(total_overdue)} ريال.\n"
             "تفاصيل مختصرة:\n"
             + "\n".join(lines[:10])
             + "\n\nشاكرين لكم، يرجى السداد في أقرب وقت."
@@ -364,7 +362,7 @@ def api_client_whatsapp_reminder(request, pk: int):
         {
             "ok": True,
             "counterparty": {"id": cp.id, "name": cp.name, "phone": cp.phone or ""},
-            "overdue_total": str(total_overdue),  # قيمة رقمية (للبرمجة)
+            "overdue_total": str(total_overdue),
             "message": msg,
             "wa_link": _wa_link(cp.phone or "", msg),
         }
@@ -480,8 +478,11 @@ def api_sale(request):
     customer_name = (payload.get("customer_name") or "").strip()
     customer_phone = (payload.get("customer_phone") or "").strip()
 
+    # ✅ قابل للتغيير من الواجهة: due_date (إن أرسلت)
     due_date = _parse_date((payload.get("due_date") or "").strip() or None)
-    terms_days = int(payload.get("terms_days") or DEFAULT_TERMS_DAYS)
+
+    # ✅ شهر افتراضي ثابت (لا نقرأ terms_days من payload)
+    terms_days = DEFAULT_TERMS_DAYS
 
     method = payload.get("method") or payload.get("payment_method") or PaymentMethod.CASH
     if method not in PaymentMethod.values:
@@ -526,13 +527,14 @@ def api_sale(request):
         amount_paid = min(total, max(Decimal("0.00"), paid))
         amount_due = max(Decimal("0.00"), total - amount_paid)
 
-    # ✅ منع الآجل بدون عميل مربوط (حتى لا تضيع الذمم)
+    # ✅ منع الآجل بدون عميل مربوط
     if paymode == PaymentMode.CREDIT and amount_due > 0:
         if not customer_phone:
             return JsonResponse({"ok": False, "error": "رقم الجوال مطلوب عند البيع بالآجل."}, status=400)
         if not cp:
             return JsonResponse({"ok": False, "error": "تعذر إنشاء/ربط عميل لهذا الجوال."}, status=400)
 
+    # ✅ افتراضيًا: شهر (30 يوم) — ويمكن تغييره إذا أرسل due_date
     if paymode == PaymentMode.CREDIT and amount_due > 0 and not due_date:
         due_date = _default_due_date(today, terms_days)
 
@@ -552,7 +554,16 @@ def api_sale(request):
             )
             projected = Decimal(outstanding) + Decimal(amount_due)
             if projected > Decimal(limit):
-                return JsonResponse({"ok": False, "error": "تجاوز حد الائتمان لهذا العميل. لا يمكن إنشاء بيع آجل بهذا المبلغ.", "outstanding": str(outstanding), "credit_limit": str(limit), "projected": str(projected)}, status=400)
+                return JsonResponse(
+                    {
+                        "ok": False,
+                        "error": "تجاوز حد الائتمان لهذا العميل. لا يمكن إنشاء بيع آجل بهذا المبلغ.",
+                        "outstanding": str(outstanding),
+                        "credit_limit": str(limit),
+                        "projected": str(projected),
+                    },
+                    status=400,
+                )
 
     tx = Transaction.objects.create(
         farm=farm,
@@ -634,9 +645,9 @@ def api_payment_add(request):
 
     pay = min(amt, tx.amount_due).quantize(Decimal("0.01"))
 
-    p = Payment.objects.create(
+    Payment.objects.create(
         farm=farm,
-        transaction=tx,  # مهم: نفس instance -> Payment.save سيحدّث tx مباشرة
+        transaction=tx,
         counterparty=tx.counterparty,
         date=timezone.localdate(),
         amount=pay,
@@ -644,7 +655,7 @@ def api_payment_add(request):
         created_by=request.user,
     )
 
-    return JsonResponse({"ok": True, "payment_id": p.id, "paid": str(tx.amount_paid), "due": str(tx.amount_due)})
+    return JsonResponse({"ok": True, "paid": str(tx.amount_paid), "due": str(tx.amount_due)})
 
 
 # =========================
@@ -716,7 +727,6 @@ def api_tx_return(request, tx_id: int):
             group=ln.group,
         )
 
-    # ثبّت المرتجع كمصفّر ماليًا
     ret.recalc_total()
     ret.amount_paid = Decimal("0.00")
     ret.amount_due = Decimal("0.00")
