@@ -47,6 +47,20 @@ def _get_farm_for_user(user):
     return Farm.objects.order_by("id").first()
 
 
+def _fmt_money(x, places: int = 2) -> str:
+    """
+    32200.00 -> 32,200.00
+    """
+    try:
+        d = Decimal(str(x or 0))
+    except Exception:
+        d = Decimal("0")
+
+    q = Decimal("1") if places == 0 else Decimal("0." + ("0" * (places - 1)) + "1")
+    d = d.quantize(q)
+    return f"{d:,.{places}f}"
+
+
 def _d(v, default="0"):
     try:
         return Decimal(str(v))
@@ -234,11 +248,15 @@ def api_clients_search(request):
 @login_required
 @permission_required("transactions.view_transaction", raise_exception=True)
 def api_ar_aging(request):
+    """
+    تقرير أعمار الديون (AR Aging) حسب العميل.
+    Buckets: current, 1-30, 31-60, 61-90, 90+
+    """
     farm = _get_farm_for_user(request.user)
     if not farm:
         return JsonResponse({"ok": False, "error": "لا توجد منشأة (Farm)."}, status=400)
 
-    today = timezone.localdate()
+    as_of = _parse_date(request.GET.get("as_of")) or timezone.localdate()
 
     qs = (
         Transaction.objects.filter(
@@ -250,59 +268,222 @@ def api_ar_aging(request):
         )
         .select_related("counterparty")
         .order_by("due_date", "date", "id")
+        .all()
     )
 
-    totals = {"current": Decimal("0"), "1_30": Decimal("0"), "31_60": Decimal("0"), "61_90": Decimal("0"), "91_plus": Decimal("0")}
-
-    def _bucket(days: int) -> str:
-        if days <= 0:
+    def bucket(days_overdue: int) -> str:
+        if days_overdue <= 0:
             return "current"
-        if days <= 30:
+        if days_overdue <= 30:
             return "1_30"
-        if days <= 60:
+        if days_overdue <= 60:
             return "31_60"
-        if days <= 90:
+        if days_overdue <= 90:
             return "61_90"
-        return "91_plus"
+        return "90_plus"
 
-    by_cp = {}
-    rows = []
+    items_map: dict = {}
+    totals = {
+        "current": Decimal("0"),
+        "1_30": Decimal("0"),
+        "31_60": Decimal("0"),
+        "61_90": Decimal("0"),
+        "90_plus": Decimal("0"),
+        "total": Decimal("0"),
+    }
 
-    for tx in qs[:800]:
-        due = tx.due_date or tx.date or today
-        days = (today - due).days
-        b = _bucket(days)
+    for tx in qs:
+        cp = tx.counterparty
+        cp_id = cp.id if cp else None
+        cp_name = (cp.name if cp else (tx.customer_name or "عميل")).strip()
+        cp_phone = (cp.phone if (cp and cp.phone) else (tx.customer_phone or "")).strip()
+
+        key = cp_id if cp_id is not None else f"manual:{cp_phone or cp_name}"
+
+        due = tx.due_date or tx.date or as_of
+        days = (as_of - due).days
+        b = bucket(days)
+
         amt = Decimal(tx.amount_due or 0)
 
+        if key not in items_map:
+            items_map[key] = {
+                "counterparty": {"id": cp_id, "name": cp_name, "phone": cp_phone},
+                "current": Decimal("0"),
+                "1_30": Decimal("0"),
+                "31_60": Decimal("0"),
+                "61_90": Decimal("0"),
+                "90_plus": Decimal("0"),
+                "total": Decimal("0"),
+                "invoices": 0,
+                "max_days_overdue": 0,
+                "min_due_date": None,
+            }
+
+        it = items_map[key]
+        it[b] += amt
+        it["total"] += amt
+        it["invoices"] += 1
+        if days > it["max_days_overdue"]:
+            it["max_days_overdue"] = days
+        if it["min_due_date"] is None or due < it["min_due_date"]:
+            it["min_due_date"] = due
+
         totals[b] += amt
+        totals["total"] += amt
 
+    # ترتيب: الأكثر تأخرًا ثم الأعلى مبلغًا
+    items = list(items_map.values())
+    items.sort(key=lambda x: (x["max_days_overdue"], x["total"]), reverse=True)
+
+    # ✅ التغيير المهم: نرجّع أرقام بفاصلة
+@require_GET
+@login_required
+@permission_required("transactions.view_transaction", raise_exception=True)
+def api_ar_aging(request):
+    """
+    تقرير أعمار الديون (AR Aging) حسب العميل.
+    Buckets: current, 1-30, 31-60, 61-90, 90+
+    - يُرجع قيم raw (بدون فاصلة) للحساب.
+    - ويُرجع *_display (بفاصلة) للعرض فقط.
+    """
+    farm = _get_farm_for_user(request.user)
+    if not farm:
+        return JsonResponse({"ok": False, "error": "لا توجد منشأة (Farm)."}, status=400)
+
+    as_of = _parse_date(request.GET.get("as_of")) or timezone.localdate()
+
+    qs = (
+        Transaction.objects.filter(
+            farm=farm,
+            tx_type=TransactionType.SALE,
+            status=TransactionStatus.POSTED,
+            is_return=False,
+            amount_due__gt=0,
+        )
+        .select_related("counterparty")
+        .order_by("due_date", "date", "id")
+        .all()
+    )
+
+    def bucket(days_overdue: int) -> str:
+        if days_overdue <= 0:
+            return "current"
+        if days_overdue <= 30:
+            return "1_30"
+        if days_overdue <= 60:
+            return "31_60"
+        if days_overdue <= 90:
+            return "61_90"
+        return "90_plus"
+
+    def dec_raw(x) -> str:
+        return str(Decimal(x or 0).quantize(Decimal("0.01")))
+
+    def dec_disp(x) -> str:
+        return _fmt_money(Decimal(x or 0), places=2)
+
+    items_map: dict = {}
+    totals = {
+        "current": Decimal("0"),
+        "1_30": Decimal("0"),
+        "31_60": Decimal("0"),
+        "61_90": Decimal("0"),
+        "90_plus": Decimal("0"),
+        "total": Decimal("0"),
+    }
+
+    for tx in qs:
         cp = tx.counterparty
-        if cp and days > 0:
-            rec = by_cp.setdefault(cp.id, {"id": cp.id, "name": cp.name, "phone": cp.phone or "", "overdue_amount": Decimal("0"), "max_days": 0})
-            rec["overdue_amount"] += amt
-            rec["max_days"] = max(rec["max_days"], days)
+        cp_id = cp.id if cp else None
+        cp_name = (cp.name if cp else (tx.customer_name or "عميل")).strip()
+        cp_phone = (cp.phone if (cp and cp.phone) else (tx.customer_phone or "")).strip()
 
-        rows.append(
+        key = cp_id if cp_id is not None else f"manual:{cp_phone or cp_name}"
+
+        due = tx.due_date or tx.date or as_of
+        days = (as_of - due).days
+        b = bucket(days)
+
+        amt = Decimal(tx.amount_due or 0)
+
+        if key not in items_map:
+            items_map[key] = {
+                "counterparty": {"id": cp_id, "name": cp_name, "phone": cp_phone},
+                "current": Decimal("0"),
+                "1_30": Decimal("0"),
+                "31_60": Decimal("0"),
+                "61_90": Decimal("0"),
+                "90_plus": Decimal("0"),
+                "total": Decimal("0"),
+                "invoices": 0,
+                "max_days_overdue": 0,
+                "min_due_date": None,
+            }
+
+        it = items_map[key]
+        it[b] += amt
+        it["total"] += amt
+        it["invoices"] += 1
+        if days > it["max_days_overdue"]:
+            it["max_days_overdue"] = days
+        if it["min_due_date"] is None or due < it["min_due_date"]:
+            it["min_due_date"] = due
+
+        totals[b] += amt
+        totals["total"] += amt
+
+    items = list(items_map.values())
+    items.sort(key=lambda x: (x["max_days_overdue"], x["total"]), reverse=True)
+
+    out_items = []
+    for it in items:
+        out_items.append(
             {
-                "id": tx.id,
-                "reference": tx.reference or f"TX#{tx.id}",
-                "date": str(tx.date),
-                "due_date": str(due),
-                "days_past_due": days,
-                "bucket": b,
-                "counterparty_id": cp.id if cp else None,
-                "counterparty_name": cp.name if cp else (tx.customer_name or ""),
-                "amount_due": str(amt),
-                "total_amount": str(tx.total_amount),
+                "counterparty": it["counterparty"],
+                # raw (للآلة)
+                "current": dec_raw(it["current"]),
+                "b1_30": dec_raw(it["1_30"]),
+                "b31_60": dec_raw(it["31_60"]),
+                "b61_90": dec_raw(it["61_90"]),
+                "b90_plus": dec_raw(it["90_plus"]),
+                "total": dec_raw(it["total"]),
+                # display (للعرض فقط)
+                "current_display": dec_disp(it["current"]),
+                "b1_30_display": dec_disp(it["1_30"]),
+                "b31_60_display": dec_disp(it["31_60"]),
+                "b61_90_display": dec_disp(it["61_90"]),
+                "b90_plus_display": dec_disp(it["90_plus"]),
+                "total_display": dec_disp(it["total"]),
+                "invoices": it["invoices"],
+                "max_days_overdue": it["max_days_overdue"],
+                "min_due_date": str(it["min_due_date"] or ""),
             }
         )
 
-    top_overdue = sorted(by_cp.values(), key=lambda x: (x["overdue_amount"], x["max_days"]), reverse=True)[:15]
-    for t in top_overdue:
-        t["overdue_amount"] = str(t["overdue_amount"])
-
-    return JsonResponse({"ok": True, "as_of": str(today), "totals": {k: str(v) for k, v in totals.items()}, "top_overdue_counterparties": top_overdue, "open_transactions": rows})
-
+    return JsonResponse(
+        {
+            "ok": True,
+            "as_of": str(as_of),
+            "totals": {
+                # raw
+                "current": dec_raw(totals["current"]),
+                "b1_30": dec_raw(totals["1_30"]),
+                "b31_60": dec_raw(totals["31_60"]),
+                "b61_90": dec_raw(totals["61_90"]),
+                "b90_plus": dec_raw(totals["90_plus"]),
+                "total": dec_raw(totals["total"]),
+                # display
+                "current_display": dec_disp(totals["current"]),
+                "b1_30_display": dec_disp(totals["1_30"]),
+                "b31_60_display": dec_disp(totals["31_60"]),
+                "b61_90_display": dec_disp(totals["61_90"]),
+                "b90_plus_display": dec_disp(totals["90_plus"]),
+                "total_display": dec_disp(totals["total"]),
+            },
+            "items": out_items,
+        }
+    )
 
 @require_GET
 @login_required
@@ -311,6 +492,7 @@ def api_client_whatsapp_reminder(request, pk: int):
     """
     رسالة واتساب جاهزة للعميل المتأخر + تنسيق مبالغ 60,000
     """
+
     def fmt0(x: Decimal) -> str:
         return f"{Decimal(x):,.0f}"
 
@@ -362,11 +544,163 @@ def api_client_whatsapp_reminder(request, pk: int):
         {
             "ok": True,
             "counterparty": {"id": cp.id, "name": cp.name, "phone": cp.phone or ""},
-            "overdue_total": str(total_overdue),
+            "overdue_total": str(total_overdue),  # أبقيناها raw
             "message": msg,
             "wa_link": _wa_link(cp.phone or "", msg),
         }
     )
+
+
+@require_GET
+@login_required
+@permission_required("transactions.view_transaction", raise_exception=True)
+def api_ar_clients_summary(request):
+    """
+    حالة العملاء:
+    - paid: لا يوجد رصيد آجل
+    - unpaid: يوجد رصيد آجل لكن غير متأخر
+    - overdue: يوجد رصيد آجل متأخر
+    GET params:
+      all=1  -> يعرض كل العملاء (BUYER) حتى لو ما عندهم مبيعات
+    """
+
+    def fmt0(x: Decimal) -> str:
+        return f"{Decimal(x):,.0f}"
+
+    farm = _get_farm_for_user(request.user)
+    if not farm:
+        return JsonResponse({"ok": False, "error": "لا توجد منشأة (Farm)."}, status=400)
+
+    today = timezone.localdate()
+    include_all = (request.GET.get("all") or "").strip() == "1"
+
+    buyers = Counterparty.objects.filter(farm=farm, party_type=CounterpartyType.BUYER)
+
+    if not include_all:
+        cp_ids = (
+            Transaction.objects.filter(
+                farm=farm,
+                tx_type=TransactionType.SALE,
+                status=TransactionStatus.POSTED,
+                is_return=False,
+                counterparty__isnull=False,
+            )
+            .values_list("counterparty_id", flat=True)
+            .distinct()
+        )
+        buyers = buyers.filter(id__in=cp_ids)
+
+    buyers = buyers.order_by("name").all()
+
+    open_qs = (
+        Transaction.objects.filter(
+            farm=farm,
+            tx_type=TransactionType.SALE,
+            status=TransactionStatus.POSTED,
+            is_return=False,
+            amount_due__gt=0,
+            counterparty__in=buyers,
+        )
+        .select_related("counterparty")
+        .order_by("counterparty_id", "due_date", "date", "id")
+        .all()
+    )
+
+    stats = {}
+    for tx in open_qs:
+        cp = tx.counterparty
+        if not cp:
+            continue
+
+        due = tx.due_date or tx.date or today
+        days = (today - due).days
+        amt = Decimal(tx.amount_due or 0)
+
+        st = stats.setdefault(
+            cp.id,
+            {
+                "outstanding": Decimal("0"),
+                "overdue_total": Decimal("0"),
+                "min_due_date": None,
+                "max_days_overdue": 0,
+                "invoices": 0,
+            },
+        )
+
+        st["outstanding"] += amt
+        st["invoices"] += 1
+
+        if days > 0:
+            st["overdue_total"] += amt
+            if days > st["max_days_overdue"]:
+                st["max_days_overdue"] = days
+
+        if st["min_due_date"] is None or due < st["min_due_date"]:
+            st["min_due_date"] = due
+
+    items = []
+    counts = {"paid": 0, "unpaid": 0, "overdue": 0}
+
+    for cp in buyers:
+        st = stats.get(cp.id, None)
+        outstanding = st["outstanding"] if st else Decimal("0")
+        overdue_total = st["overdue_total"] if st else Decimal("0")
+        min_due = st["min_due_date"] if st else None
+        max_days = st["max_days_overdue"] if st else 0
+        invoices = st["invoices"] if st else 0
+
+        if outstanding <= 0:
+            status = "paid"
+        elif overdue_total > 0:
+            status = "overdue"
+        else:
+            status = "unpaid"
+
+        counts[status] += 1
+
+        msg = ""
+        if status == "overdue":
+            msg = (
+                f"السلام عليكم {cp.name}،\n"
+                f"نذكّركم بوجود مستحقات متأخرة بقيمة {fmt0(overdue_total)} ريال.\n"
+                f"إجمالي الرصيد الآجل: {fmt0(outstanding)} ريال.\n"
+                "شاكرين لكم، يرجى السداد في أقرب وقت."
+            )
+        elif status == "unpaid" and min_due:
+            msg = (
+                f"السلام عليكم {cp.name}،\n"
+                f"لديكم رصيد آجل بقيمة {fmt0(outstanding)} ريال.\n"
+                f"تاريخ الاستحقاق: {min_due}.\n"
+                "شكرًا لكم."
+            )
+
+        # ✅ نرجّع قيمتين: raw للفرز/الاستعمال البرمجي + display للفاصلة
+        outstanding_raw = str(outstanding.quantize(Decimal("0.01")))
+        overdue_raw = str(overdue_total.quantize(Decimal("0.01")))
+
+        items.append(
+            {
+                "counterparty": {"id": cp.id, "name": cp.name, "phone": cp.phone or ""},
+                "status": status,
+                "outstanding_raw": outstanding_raw,
+                "overdue_total_raw": overdue_raw,
+                "outstanding": _fmt_money(outstanding, places=2),
+                "overdue_total": _fmt_money(overdue_total, places=2),
+                "min_due_date": str(min_due or ""),
+                "max_days_overdue": max_days,
+                "open_invoices": invoices,
+                "wa_link": _wa_link(cp.phone or "", msg) if msg else "",
+                "whatsapp_reminder_api": f"/api/clients/{cp.id}/whatsapp-reminder/",
+            }
+        )
+
+    def sort_key(it):
+        pri = {"overdue": 2, "unpaid": 1, "paid": 0}[it["status"]]
+        return (pri, Decimal(it["outstanding_raw"]), it["max_days_overdue"])
+
+    items.sort(key=sort_key, reverse=True)
+
+    return JsonResponse({"ok": True, "as_of": str(today), "counts": counts, "items": items})
 
 
 # =========================
@@ -387,7 +721,15 @@ def api_purchase(request):
     if idem:
         existing = Transaction.objects.filter(farm=farm, idempotency_key=idem).first()
         if existing:
-            return JsonResponse({"ok": True, "tx_id": existing.id, "total": str(existing.total_amount), "preview_url": f"/reports/tx/{existing.id}/", "pdf_url": f"/reports/tx/{existing.id}/pdf/"})
+            return JsonResponse(
+                {
+                    "ok": True,
+                    "tx_id": existing.id,
+                    "total": str(existing.total_amount),
+                    "preview_url": f"/reports/tx/{existing.id}/",
+                    "pdf_url": f"/reports/tx/{existing.id}/pdf/",
+                }
+            )
 
     kind = payload.get("kind") or ""
     cls = payload.get("cls") or ""
@@ -444,7 +786,15 @@ def api_purchase(request):
         created_by=request.user,
     )
 
-    return JsonResponse({"ok": True, "tx_id": tx.id, "total": str(tx.total_amount), "preview_url": f"/reports/tx/{tx.id}/", "pdf_url": f"/reports/tx/{tx.id}/pdf/"})
+    return JsonResponse(
+        {
+            "ok": True,
+            "tx_id": tx.id,
+            "total": str(tx.total_amount),
+            "preview_url": f"/reports/tx/{tx.id}/",
+            "pdf_url": f"/reports/tx/{tx.id}/pdf/",
+        }
+    )
 
 
 # =========================
@@ -465,7 +815,17 @@ def api_sale(request):
     if idem:
         existing = Transaction.objects.filter(farm=farm, idempotency_key=idem).first()
         if existing:
-            return JsonResponse({"ok": True, "tx_id": existing.id, "total": str(existing.total_amount), "paid": str(existing.amount_paid), "due": str(existing.amount_due), "preview_url": f"/reports/tx/{existing.id}/", "pdf_url": f"/reports/tx/{existing.id}/pdf/"})
+            return JsonResponse(
+                {
+                    "ok": True,
+                    "tx_id": existing.id,
+                    "total": str(existing.total_amount),
+                    "paid": str(existing.amount_paid),
+                    "due": str(existing.amount_due),
+                    "preview_url": f"/reports/tx/{existing.id}/",
+                    "pdf_url": f"/reports/tx/{existing.id}/pdf/",
+                }
+            )
 
     kind = payload.get("kind") or ""
     cls = payload.get("cls") or ""
@@ -478,10 +838,7 @@ def api_sale(request):
     customer_name = (payload.get("customer_name") or "").strip()
     customer_phone = (payload.get("customer_phone") or "").strip()
 
-    # ✅ قابل للتغيير من الواجهة: due_date (إن أرسلت)
     due_date = _parse_date((payload.get("due_date") or "").strip() or None)
-
-    # ✅ شهر افتراضي ثابت (لا نقرأ terms_days من payload)
     terms_days = DEFAULT_TERMS_DAYS
 
     method = payload.get("method") or payload.get("payment_method") or PaymentMethod.CASH
@@ -510,11 +867,20 @@ def api_sale(request):
 
     cp = None
     if customer_phone:
-        cp = Counterparty.objects.filter(farm=farm, phone=customer_phone, party_type=CounterpartyType.BUYER).first()
+        cp = Counterparty.objects.filter(
+            farm=farm,
+            phone=customer_phone,
+            party_type=CounterpartyType.BUYER,
+        ).first()
 
     if not cp and (customer_name or customer_phone):
         name = customer_name or "عميل"
-        cp, _ = Counterparty.objects.get_or_create(farm=farm, name=name, party_type=CounterpartyType.BUYER, defaults={"phone": customer_phone})
+        cp, _ = Counterparty.objects.get_or_create(
+            farm=farm,
+            name=name,
+            party_type=CounterpartyType.BUYER,
+            defaults={"phone": customer_phone},
+        )
 
     if cp and customer_phone and (cp.phone or "") != customer_phone:
         cp.phone = customer_phone
@@ -527,14 +893,12 @@ def api_sale(request):
         amount_paid = min(total, max(Decimal("0.00"), paid))
         amount_due = max(Decimal("0.00"), total - amount_paid)
 
-    # ✅ منع الآجل بدون عميل مربوط
     if paymode == PaymentMode.CREDIT and amount_due > 0:
         if not customer_phone:
             return JsonResponse({"ok": False, "error": "رقم الجوال مطلوب عند البيع بالآجل."}, status=400)
         if not cp:
             return JsonResponse({"ok": False, "error": "تعذر إنشاء/ربط عميل لهذا الجوال."}, status=400)
 
-    # ✅ افتراضيًا: شهر (30 يوم) — ويمكن تغييره إذا أرسل due_date
     if paymode == PaymentMode.CREDIT and amount_due > 0 and not due_date:
         due_date = _default_due_date(today, terms_days)
 
@@ -608,7 +972,18 @@ def api_sale(request):
             created_by=request.user,
         )
 
-    return JsonResponse({"ok": True, "tx_id": tx.id, "total": str(tx.total_amount), "paid": str(tx.amount_paid), "due": str(tx.amount_due), "due_date": str(tx.due_date or ""), "preview_url": f"/reports/tx/{tx.id}/", "pdf_url": f"/reports/tx/{tx.id}/pdf/"})
+    return JsonResponse(
+        {
+            "ok": True,
+            "tx_id": tx.id,
+            "total": str(tx.total_amount),
+            "paid": str(tx.amount_paid),
+            "due": str(tx.amount_due),
+            "due_date": str(tx.due_date or ""),
+            "preview_url": f"/reports/tx/{tx.id}/",
+            "pdf_url": f"/reports/tx/{tx.id}/pdf/",
+        }
+    )
 
 
 # =========================

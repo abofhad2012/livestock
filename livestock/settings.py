@@ -9,10 +9,8 @@ import dj_database_url
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# نعتبر أننا على Render إذا كان هذا المتغير موجودًا
 ON_RENDER = bool(os.getenv("RENDER_EXTERNAL_HOSTNAME"))
 
-# لا تعتمد على DEBUG=True في الإنتاج
 DEBUG = os.getenv("DEBUG", "False" if ON_RENDER else "True").lower() == "true"
 
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -47,11 +45,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-
-    # أبقه إذا كنت تستخدم DRF فعلًا
     "rest_framework",
-
-    # تطبيقات المشروع
     "accounts",
     "core",
     "herd",
@@ -75,7 +69,7 @@ ROOT_URLCONF = "livestock.urls"
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
-        "DIRS": [BASE_DIR / "templates"],  # لا يضر حتى لو المجلد غير موجود
+        "DIRS": [BASE_DIR / "templates"],
         "APP_DIRS": True,
         "OPTIONS": {
             "context_processors": [
@@ -89,7 +83,6 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "livestock.wsgi.application"
 
-# قاعدة البيانات: SQLite محليًا، Postgres على Render عبر DATABASE_URL
 if os.getenv("DATABASE_URL"):
     DATABASES = {
         "default": dj_database_url.config(conn_max_age=600),
@@ -117,14 +110,18 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-# هذا مشروع عربي/سعودي، وTIME_ZONE مهم عندك لأن منطق due_date يستخدم timezone.localdate()
 LANGUAGE_CODE = "ar"
 TIME_ZONE = "Asia/Riyadh"
 USE_I18N = True
 USE_TZ = True
 
+LOGIN_URL = "/accounts/login/"
+LOGIN_REDIRECT_URL = "/"
+LOGOUT_REDIRECT_URL = "/"
+
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+STATICFILES_DIRS = [BASE_DIR / "static"]
 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"
@@ -151,8 +148,6 @@ if not DEBUG:
     SECURE_SSL_REDIRECT = True
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-
-    # ابدأ بقيمة صغيرة أولًا
     SECURE_HSTS_SECONDS = int(os.getenv("SECURE_HSTS_SECONDS", "3600"))
     SECURE_HSTS_INCLUDE_SUBDOMAINS = os.getenv(
         "SECURE_HSTS_INCLUDE_SUBDOMAINS", "False"

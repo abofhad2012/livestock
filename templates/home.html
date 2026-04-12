@@ -1,7 +1,9 @@
-<!doctype html>
+﻿<!doctype html>
+{% load static %}
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="utf-8" />
+  <link rel="icon" href="{% static 'favicon.ico' %}">
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>محاسبة المواشي</title>
 
@@ -382,7 +384,6 @@
             <span>ريال</span>
           </div>
 
-          <!-- رصيد قبل الحفظ -->
           <div class="hint" data-p="stockhint"></div>
 
           <button class="btn green" type="button" data-p="save">
@@ -456,7 +457,6 @@
             </select>
           </div>
 
-          <!-- يظهر فقط عند الآجل -->
           <div class="field" data-s="due-wrap" style="display:none;">
             <label class="label">تاريخ الاستحقاق (للآجل)</label>
             <input type="date" data-s="due">
@@ -483,9 +483,7 @@
             <span>ريال</span>
           </div>
 
-          <!-- رصيد قبل الحفظ -->
           <div class="hint" data-s="stockhint"></div>
-
           <div class="hint" data-s="duehint" style="display:none;"></div>
 
           <button class="btn red" type="button" data-s="save">
@@ -542,596 +540,50 @@
     {% include "footer.html" %}
   </div>
 
+  <!-- ✅ مصدر واحد فقط للواجهة -->
+  <script src="{% static 'app.js' %}"></script>
   <script>
-    (function () {
-      const $ = (sel, root=document) => root.querySelector(sel);
-      const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
+(function () {
+  const purchaseSection = document.getElementById("purchase");
+  const saleSection = document.getElementById("sale");
 
-      // ===== Tabs (3 panels) =====
-      const tabs = $$('[data-tab]');
-      const panels = $$('[data-panel]');
-      const panelByName = new Map(panels.map(p => [p.getAttribute('data-panel'), p]));
+  if (!purchaseSection || !saleSection) return;
 
-      function setTab(name){
-        tabs.forEach(t => t.classList.toggle('active', t.getAttribute('data-tab') === name));
-        panels.forEach(p => p.style.display = 'none');
-        const target = panelByName.get(name);
-        if (target) target.style.display = '';
-        location.hash = '#' + name;
+  function showPanel(panelName, scrollToPanel = true) {
+    const showSale = panelName === "sale";
 
-        // عند فتح تبويب التحصيل: حدّث البيانات
-        if (name === 'collections'){
-          refreshAging();
-        }
-      }
-      tabs.forEach(t => t.addEventListener('click', () => setTab(t.getAttribute('data-tab'))));
+    purchaseSection.style.display = showSale ? "none" : "";
+    saleSection.style.display = showSale ? "" : "none";
 
-      // ===== helpers =====
-      const toNum = (v) => {
-        const n = Number(v);
-        return Number.isFinite(n) ? n : 0;
-      };
-      const money = (n) => (Math.max(0, toNum(n))).toFixed(2);
+    purchaseSection.setAttribute("aria-hidden", showSale ? "true" : "false");
+    saleSection.setAttribute("aria-hidden", showSale ? "false" : "true");
 
-      function stripCountLabel(t){
-        return String(t || "").replace(/^\(\s*[\d.]+\s*\)\s*/,"").trim();
-      }
-      function isTlyan(kind){
-        return ["HARRI","SAWAKNI","NAIMI"].includes(kind);
-      }
+    const target = showSale ? saleSection : purchaseSection;
 
-      // local date helpers (avoid UTC shift)
-      function fmtLocalISO(d){
-        const y = d.getFullYear();
-        const m = String(d.getMonth()+1).padStart(2,'0');
-        const dd = String(d.getDate()).padStart(2,'0');
-        return `${y}-${m}-${dd}`;
-      }
-      function addDays(d, days){
-        const x = new Date(d.getTime());
-        x.setDate(x.getDate() + days);
-        return x;
-      }
-
-      // الصنف يظهر فقط لأنواع الطليان
-      const NEED_CLASS_TYPES = new Set(["HARRI", "SAWAKNI", "NAIMI"]);
-      function toggleClassField(typeValue, wrapEl, selectEl) {
-        if (!wrapEl || !selectEl) return;
-        const need = NEED_CLASS_TYPES.has(typeValue);
-        wrapEl.style.display = need ? "" : "none";
-        selectEl.disabled = !need;
-        if (!need) selectEl.value = "";
-      }
-
-      // PURCHASE: type + class
-      const pType = $('[data-p="type"]');
-      const pClassWrap = $('[data-p="class-wrap"]');
-      const pClass = $('[data-p="class"]');
-
-      if (pType) {
-        pType.addEventListener("change", () => toggleClassField(pType.value, pClassWrap, pClass));
-        toggleClassField(pType.value, pClassWrap, pClass);
-      }
-
-      // SALE: type + class
-      const sType = $('[data-s="type"]');
-      const sClassWrap = $('[data-s="class-wrap"]');
-      const sClass = $('[data-s="class"]');
-
-      if (sType) {
-        sType.addEventListener("change", () => toggleClassField(sType.value, sClassWrap, sClass));
-        toggleClassField(sType.value, sClassWrap, sClass);
-      }
-
-      // PURCHASE calc
-      const pQty = $('[data-p="qty"]');
-      const pUnit = $('[data-p="unit"]');
-      const pTotal = $('[data-p="total"]');
-      const pSave = $('[data-p="save"]');
-
-      // SALE calc
-      const sQty = $('[data-s="qty"]');
-      const sUnit = $('[data-s="unit"]');
-      const sPayMode = $('[data-s="paymode"]');
-      const sPaid = $('[data-s="paid"]');
-      const sMethod = $('[data-s="method"]');
-      const sTotal = $('[data-s="total"]');
-      const sDueHint = $('[data-s="duehint"]');
-      const sDueWrap = $('[data-s="due-wrap"]');
-      const sDue = $('[data-s="due"]');
-      const sSave = $('[data-s="save"]');
-
-      function calcPurchase(){
-        const total = Math.max(0, toNum(pQty?.value)) * Math.max(0, toNum(pUnit?.value));
-        if (pTotal) pTotal.textContent = money(total);
-        updateStockHints();
-      }
-
-      function calcSale(){
-        const total = Math.max(0, toNum(sQty?.value)) * Math.max(0, toNum(sUnit?.value));
-        if (sTotal) sTotal.textContent = money(total);
-
-        const mode = sPayMode?.value || 'PAID';
-
-        if (mode === 'PAID'){
-          if (sPaid){
-            sPaid.value = money(total);
-            sPaid.disabled = true;
-          }
-          if (sDueHint){
-            sDueHint.style.display = 'none';
-            sDueHint.textContent = '';
-          }
-          if (sDueWrap) sDueWrap.style.display = 'none';
-          if (sDue) sDue.value = "";
-        } else {
-          if (sPaid) sPaid.disabled = false;
-
-          const paid = Math.max(0, toNum(sPaid?.value));
-          const due = Math.max(0, total - paid);
-
-          if (sDueHint){
-            sDueHint.style.display = '';
-            sDueHint.textContent = `المتبقي (آجل): ${money(due)} ريال`;
-          }
-
-          // due_date يظهر فقط إذا فيه متبقي
-          if (sDueWrap) sDueWrap.style.display = (due > 0) ? '' : 'none';
-
-          // ضع تاريخ افتراضي (اليوم + 30) إن كان فارغًا
-          if (due > 0 && sDue && !sDue.value){
-            const d = addDays(new Date(), 30);
-            sDue.value = fmtLocalISO(d);
-          }
-
-          // إذا صار due = 0 نخفي due_date
-          if (due <= 0 && sDue) sDue.value = "";
-        }
-
-        updateStockHints();
-      }
-
-      [pQty, pUnit].forEach(el => el && el.addEventListener('input', calcPurchase));
-      [sQty, sUnit, sPaid].forEach(el => el && el.addEventListener('input', calcSale));
-      if (sPayMode) sPayMode.addEventListener('change', calcSale);
-
-      calcPurchase();
-      calcSale();
-
-      // ===== CSRF + JSON helpers =====
-      function getCookie(name){
-        const v = `; ${document.cookie}`;
-        const parts = v.split(`; ${name}=`);
-        if (parts.length === 2) return parts.pop().split(';').shift();
-        return "";
-      }
-
-      async function getJSON(url){
-        const res = await fetch(url, { headers: { "Accept":"application/json" }});
-        const txt = await res.text();
-        let j = {};
-        try { j = JSON.parse(txt); } catch {}
-        if (!res.ok) throw new Error(j.error || txt || "فشل الطلب");
-        return j;
-      }
-
-      async function postJSON(url, data){
-        const res = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-CSRFToken": getCookie("csrftoken"),
-          },
-          body: JSON.stringify(data),
-        });
-
-        const txt = await res.text();
-        let json = {};
-        try { json = JSON.parse(txt); } catch {}
-        if (!res.ok) {
-          // تحسين رسالة خطأ حد الائتمان إن توفرت حقول إضافية
-          if (json && json.error && (json.outstanding || json.credit_limit || json.projected)){
-            const extra = [
-              json.outstanding != null ? `المستحق الحالي: ${json.outstanding}` : null,
-              json.credit_limit != null ? `حد الائتمان: ${json.credit_limit}` : null,
-              json.projected != null ? `بعد العملية: ${json.projected}` : null,
-            ].filter(Boolean).join("\n");
-            throw new Error(json.error + (extra ? ("\n\n" + extra) : ""));
-          }
-          throw new Error((json && json.error) || txt || "فشل الطلب");
-        }
-        return json;
-      }
-
-      // ===== STOCK + CLIENTS =====
-      let STOCK = {};
-      const phoneInput = document.querySelector('[data-s="phone"]');
-      const nameInput  = document.querySelector('[data-s="customer"]');
-      const dl         = document.getElementById("clientPhones");
-      let phoneMap = new Map();
-      let tmr = null;
-
-      function getStock(kind, cls){
-        const m = STOCK[kind];
-        if (!m) return 0;
-        if (isTlyan(kind)) {
-          if (!cls) return 0;
-          return Number(m[cls] ?? 0);
-        }
-        return Number(m["NONE"] ?? m.total ?? 0);
-      }
-
-      function updateSaleOptionCounts(){
-        if (!sType) return;
-        Array.from(sType.options).forEach(opt=>{
-          const k = opt.value;
-          if (!k) return;
-          const total = Number((STOCK[k] && STOCK[k].total != null) ? STOCK[k].total : 0);
-          opt.textContent = `(${Math.floor(total)}) ${stripCountLabel(opt.textContent)}`;
-        });
-      }
-
-      function updateStockHints(){
-        const pHint = document.querySelector('[data-p="stockhint"]');
-        const sHint = document.querySelector('[data-s="stockhint"]');
-
-        // شراء
-        if (pHint) {
-          const k = pType?.value || "";
-          const c = pClass?.value || "";
-          const q = Number(pQty?.value || 0);
-
-          if (!k) pHint.textContent = "";
-          else if (isTlyan(k) && !c) pHint.textContent = "اختر الصنف (جذع/ثني) لعرض الرصيد.";
-          else {
-            const cur = getStock(k, c);
-            const after = cur + (isFinite(q) ? q : 0);
-            pHint.textContent = `الرصيد الحالي: ${cur} — بعد الشراء: ${after}`;
-          }
-        }
-
-        // بيع
-        if (sHint) {
-          const k = sType?.value || "";
-          const c = sClass?.value || "";
-          const q = Number(sQty?.value || 0);
-
-          if (!k) sHint.textContent = "";
-          else if (isTlyan(k) && !c) sHint.textContent = "اختر الصنف (جذع/ثني) لعرض الرصيد.";
-          else {
-            const cur = getStock(k, c);
-            const after = cur - (isFinite(q) ? q : 0);
-            sHint.textContent = `الرصيد الحالي: ${cur} — بعد البيع: ${after}`;
-          }
-        }
-      }
-
-      async function refreshStock(){
-        try{
-          const j = await getJSON("/transactions/api/stock/");
-          if (j.ok) {
-            STOCK = j.by_kind || {};
-            updateSaleOptionCounts();
-            updateStockHints();
-          }
-        } catch (e) {}
-      }
-
-      async function fetchClients(q){
-        const j = await getJSON(`/transactions/api/clients/search/?q=${encodeURIComponent(q)}`);
-        if (!j.ok) return;
-
-        phoneMap.clear();
-        if (dl) dl.innerHTML = "";
-        (j.items || []).forEach(it=>{
-          const phone = String(it.phone || "");
-          const name = String(it.name || "");
-          if (!phone) return;
-          phoneMap.set(phone, name);
-          if (dl){
-            const opt = document.createElement("option");
-            opt.value = phone;
-            opt.label = name;
-            dl.appendChild(opt);
-          }
-        });
-
-        if (nameInput && phoneInput && phoneMap.has(phoneInput.value) && !nameInput.value) {
-          nameInput.value = phoneMap.get(phoneInput.value);
-        }
-      }
-
-      if (phoneInput){
-        phoneInput.addEventListener("input", ()=>{
-          clearTimeout(tmr);
-          const q = phoneInput.value.trim();
-          if (q.length < 3) return;
-          tmr = setTimeout(()=> fetchClients(q), 250);
-        });
-        phoneInput.addEventListener("change", ()=>{
-          if (nameInput && phoneInput && phoneMap.has(phoneInput.value) && !nameInput.value) {
-            nameInput.value = phoneMap.get(phoneInput.value);
-          }
-        });
-      }
-
-      [pType, pClass, pQty, sType, sClass, sQty].forEach(el=>{
-        if (!el) return;
-        el.addEventListener("change", updateStockHints);
-        el.addEventListener("input", updateStockHints);
+    if (scrollToPanel) {
+      requestAnimationFrame(() => {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
       });
+    }
+  }
 
-      // ===== Trader: Aging UI =====
-      const agingRefreshBtn = document.getElementById("agingRefreshBtn");
-      const agingMeta = document.getElementById("agingMeta");
-      const agingTopWrap = document.getElementById("agingTopWrap");
-      const agingTxWrap = document.getElementById("agingTxWrap");
+  function applyHash() {
+    const hash = (window.location.hash || "").replace("#", "").trim();
 
-      function setAgingValue(key, v){
-        const el = document.querySelector(`[data-a="${key}"]`);
-        if (el) el.textContent = money(v);
-      }
+    if (hash === "sale") {
+      showPanel("sale");
+      return;
+    }
 
-      function renderAging(j){
-        const totals = (j && j.totals) || {};
-        const cur = toNum(totals.current);
-        const b1 = toNum(totals["1_30"]);
-        const b2 = toNum(totals["31_60"]);
-        const b3 = toNum(totals["61_90"]);
-        const b4 = toNum(totals["91_plus"]);
-        const all = cur + b1 + b2 + b3 + b4;
+    if (hash === "purchase") {
+      showPanel("purchase");
+      return;
+    }
+  }
 
-        setAgingValue("current", cur);
-        setAgingValue("1_30", b1);
-        setAgingValue("31_60", b2);
-        setAgingValue("61_90", b3);
-        setAgingValue("91_plus", b4);
-        setAgingValue("all", all);
-
-        if (agingMeta){
-          agingMeta.textContent = `آخر تحديث: ${j.as_of || ""} — إجمالي الآجل: ${money(all)} ريال`;
-        }
-
-        // Top overdue clients
-        const top = (j && j.top_overdue_counterparties) || [];
-        if (!top.length){
-          agingTopWrap.innerHTML = '<div class="hint" style="text-align:right;">لا توجد ذمم متأخرة الآن ✅</div>';
-        } else {
-          const rows = top.map(it => {
-            const id = it.id;
-            const name = (it.name || "").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-            const phone = (it.phone || "").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-            const amt = money(it.overdue_amount);
-            const days = it.max_days ?? 0;
-            return `
-              <tr>
-                <td>${name}<div style="color:var(--muted); font-size:12px; margin-top:4px;">${phone || "—"}</div></td>
-                <td><span class="badge">متأخر ${days} يوم</span></td>
-                <td>${amt}</td>
-                <td class="actions">
-                  <button class="btn small blue" type="button" data-wa="${id}">واتساب</button>
-                  <button class="btn small" style="background:rgba(255,255,255,.10); color:var(--text); border:1px solid var(--line);" type="button" data-copy="${id}">نسخ</button>
-                </td>
-              </tr>
-            `;
-          }).join("");
-
-          agingTopWrap.innerHTML = `
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>العميل</th>
-                  <th>الحالة</th>
-                  <th>المتأخر (ريال)</th>
-                  <th style="text-align:left;">إجراء</th>
-                </tr>
-              </thead>
-              <tbody>${rows}</tbody>
-            </table>
-          `;
-
-          // bind actions
-          $$('[data-wa]', agingTopWrap).forEach(btn => {
-            btn.addEventListener('click', async () => {
-              const id = btn.getAttribute('data-wa');
-              try{
-                btn.disabled = true;
-                const r = await getJSON(`/transactions/api/clients/${id}/whatsapp-reminder/`);
-                if (!r.ok) throw new Error(r.error || "فشل");
-                if (!r.wa_link) { alert("لا يوجد رقم جوال لهذا العميل."); return; }
-                window.open(r.wa_link, "_blank", "noopener");
-              } catch(e){
-                alert(String(e.message || e));
-              } finally {
-                btn.disabled = false;
-              }
-            });
-          });
-
-          $$('[data-copy]', agingTopWrap).forEach(btn => {
-            btn.addEventListener('click', async () => {
-              const id = btn.getAttribute('data-copy');
-              try{
-                btn.disabled = true;
-                const r = await getJSON(`/transactions/api/clients/${id}/whatsapp-reminder/`);
-                if (!r.ok) throw new Error(r.error || "فشل");
-                const msg = r.message || "";
-                if (!msg) { alert("لا توجد رسالة."); return; }
-                await navigator.clipboard.writeText(msg);
-                alert("✅ تم نسخ الرسالة");
-              } catch(e){
-                alert(String(e.message || e));
-              } finally {
-                btn.disabled = false;
-              }
-            });
-          });
-        }
-
-        // open transactions (short list)
-        const txs = (j && j.open_transactions) || [];
-        if (!txs.length){
-          agingTxWrap.innerHTML = '<div class="hint" style="text-align:right;">لا توجد معاملات آجلة.</div>';
-        } else {
-          const rows = txs.slice(0, 10).map(tx => {
-            const ref = (tx.reference || `TX#${tx.id}`).replace(/</g,"&lt;").replace(/>/g,"&gt;");
-            const cp = (tx.counterparty_name || "").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-            const due = (tx.due_date || "").replace(/</g,"&lt;").replace(/>/g,"&gt;");
-            const days = tx.days_past_due ?? 0;
-            const amt = money(tx.amount_due);
-            return `
-              <tr>
-                <td>${ref}<div style="color:var(--muted); font-size:12px; margin-top:4px;">${cp || "—"}</div></td>
-                <td>${due}<div style="color:var(--muted); font-size:12px; margin-top:4px;">${days > 0 ? `متأخر ${days} يوم` : "غير مستحق"}</div></td>
-                <td>${amt}</td>
-                <td class="actions">
-                  <a class="btn small" style="background:rgba(255,255,255,.10); color:var(--text); border:1px solid var(--line);" href="/reports/tx/${tx.id}/" target="_blank" rel="noopener">عرض</a>
-                </td>
-              </tr>
-            `;
-          }).join("");
-
-          agingTxWrap.innerHTML = `
-            <table class="table">
-              <thead>
-                <tr>
-                  <th>المعاملة</th>
-                  <th>الاستحقاق</th>
-                  <th>المتبقي (ريال)</th>
-                  <th style="text-align:left;">إجراء</th>
-                </tr>
-              </thead>
-              <tbody>${rows}</tbody>
-            </table>
-          `;
-        }
-      }
-
-      async function refreshAging(){
-        try{
-          agingTopWrap.textContent = "⏳ جاري التحديث...";
-          agingTxWrap.textContent = "⏳ جاري التحديث...";
-          const j = await getJSON("/transactions/api/ar/aging/");
-          if (!j.ok) throw new Error(j.error || "فشل");
-          renderAging(j);
-        } catch(e){
-          const msg = String(e.message || e);
-          agingTopWrap.innerHTML = `<div class="hint" style="text-align:right;">❌ ${msg}</div>`;
-          agingTxWrap.innerHTML = `<div class="hint" style="text-align:right;">—</div>`;
-        }
-      }
-
-      if (agingRefreshBtn){
-        agingRefreshBtn.addEventListener('click', refreshAging);
-      }
-
-      // ===== Save Purchase =====
-      if (pSave){
-        pSave.addEventListener("click", async () => {
-          try{
-            const kind = pType?.value || "";
-            const cls  = pClass?.value || "";
-            const quantity = Number(pQty?.value || 0);
-            const unit_price = Number(pUnit?.value || 0);
-
-            const isT = isTlyan(kind);
-
-            if (!kind) { alert("اختر نوع المواشي"); pType?.focus(); return; }
-            if (isT && !cls) { alert("اختر الصنف (جذع/ثني) للطليان"); pClass?.focus(); return; }
-            if (quantity <= 0) { alert("أدخل الكمية (أكبر من صفر)"); pQty?.focus(); return; }
-            if (unit_price <= 0) { alert("أدخل سعر الوحدة (أكبر من صفر)"); pUnit?.focus(); return; }
-
-            pSave.disabled = true;
-
-            const r = await postJSON("/transactions/api/purchase/", {
-              kind,
-              cls: isT ? cls : "NONE",
-              quantity,
-              unit_price
-            });
-
-            await refreshStock();
-            window.open(r.preview_url, "_blank", "noopener");
-          } catch(e){
-            alert(String(e.message || e));
-          } finally {
-            pSave.disabled = false;
-          }
-        });
-      }
-
-      // ===== Save Sale =====
-      if (sSave){
-        sSave.addEventListener("click", async () => {
-          try{
-            const kind = sType?.value || "";
-            const cls  = sClass?.value || "";
-            const quantity = Number(sQty?.value || 0);
-            const unit_price = Number(sUnit?.value || 0);
-
-            const isT = isTlyan(kind);
-
-            if (!kind) { alert("اختر نوع المواشي"); sType?.focus(); return; }
-            if (isT && !cls) { alert("اختر الصنف (جذع/ثني) للطليان"); sClass?.focus(); return; }
-            if (quantity <= 0) { alert("أدخل الكمية (أكبر من صفر)"); sQty?.focus(); return; }
-            if (unit_price <= 0) { alert("أدخل سعر الوحدة (أكبر من صفر)"); sUnit?.focus(); return; }
-
-            const payment_mode = (sPayMode?.value || "PAID");
-            const paid_amount = Number(sPaid?.value || 0);
-            const method = (sMethod?.value || "CASH");
-
-            const customer_name = String(document.querySelector('[data-s="customer"]')?.value || "");
-            const customer_phone = String(document.querySelector('[data-s="phone"]')?.value || "");
-
-            // تاريخ الاستحقاق (اختياري)
-            const due_date = (sDue && sDueWrap && sDueWrap.style.display !== 'none') ? (sDue.value || null) : null;
-
-            // شرط الآجل (Front)
-            if (payment_mode === "CREDIT" && !customer_phone.trim()){
-              alert("رقم الجوال مطلوب عند البيع بالآجل");
-              phoneInput?.focus();
-              return;
-            }
-
-            sSave.disabled = true;
-
-            const r = await postJSON("/transactions/api/sale/", {
-              kind,
-              cls: isT ? cls : "NONE",
-              quantity,
-              unit_price,
-              payment_mode,
-              paid_amount,
-              method,
-              due_date,
-              customer_name,
-              customer_phone
-            });
-
-            await refreshStock();
-
-            // بعد البيع: افتح المعاينة + حدّث تحصيل (لو كنت على تبويب التحصيل)
-            window.open(r.preview_url, "_blank", "noopener");
-            if (location.hash === "#collections"){
-              refreshAging();
-            }
-          } catch(e){
-            alert(String(e.message || e));
-          } finally {
-            sSave.disabled = false;
-          }
-        });
-      }
-
-      // init
-      const hash = (location.hash || "").replace("#","");
-      if (hash === 'sale' || hash === 'collections' || hash === 'purchase'){
-        setTab(hash);
-      } else {
-        setTab('purchase');
-      }
-      refreshStock();
-    })();
-  </script>
+  document.addEventListener("DOMContentLoaded", applyHash);
+  window.addEventListener("hashchange", applyHash);
+})();
+</script>
 </body>
 </html>

@@ -1,8 +1,10 @@
+﻿from datetime import timedelta
 from decimal import Decimal
 
 from django.conf import settings
 from django.db import models
-from django.db.models import Sum
+from django.db.models import Q, Sum
+from django.utils import timezone
 
 
 class CounterpartyType(models.TextChoices):
@@ -18,6 +20,16 @@ class Counterparty(models.Model):
     party_type = models.CharField(max_length=20, choices=CounterpartyType.choices, default=CounterpartyType.OTHER, verbose_name="نوع الطرف")
     phone = models.CharField(max_length=30, blank=True, verbose_name="رقم الجوال")
     notes = models.TextField(blank=True, verbose_name="ملاحظات")
+
+    # ✅ حد ائتمان (للتاجر)
+    credit_limit = models.DecimalField(
+        max_digits=12,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        verbose_name="حد الائتمان (ريال)",
+        help_text="يستخدم لمنع البيع الآجل إذا تجاوزت مستحقات العميل هذا الحد.",
+    )
 
     class Meta:
         verbose_name = "طرف تعامل"
@@ -66,8 +78,8 @@ class Transaction(models.Model):
     reference = models.CharField(max_length=80, blank=True, verbose_name="مرجع/فاتورة")
     counterparty = models.ForeignKey("transactions.Counterparty", on_delete=models.SET_NULL, null=True, blank=True, related_name="transactions", verbose_name="طرف التعامل")
 
-    # ✅ منع التكرار (Idempotency)
-    idempotency_key = models.CharField(max_length=64, unique=True, null=True, blank=True, verbose_name="مفتاح منع التكرار")
+    # ✅ Idempotency (Unique per farm via constraint)
+    idempotency_key = models.CharField(max_length=64, null=True, blank=True, verbose_name="مفتاح منع التكرار")
 
     # ✅ مرتجع بدل تعديل
     is_return = models.BooleanField(default=False, verbose_name="مرتجع")
@@ -78,12 +90,19 @@ class Transaction(models.Model):
     amount_paid = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name="المبلغ المدفوع")
     amount_due = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name="المتبقي (آجل)")
 
+    # ✅ تاريخ الاستحقاق (Aging)
+    due_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="تاريخ الاستحقاق",
+        help_text="يستخدم لحساب المتأخرات وأعمار الديون (Aging). إذا تركته فارغًا سيتم ضبطه تلقائيًا عند وجود متبقي.",
+    )
+
     # ✅ بيانات عميل مباشرة (اختياري)
     customer_name = models.CharField(max_length=150, blank=True, verbose_name="اسم العميل")
     customer_phone = models.CharField(max_length=30, blank=True, verbose_name="رقم الجوال")
 
     notes = models.TextField(blank=True, verbose_name="ملاحظات")
-
     total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0, verbose_name="الإجمالي")
 
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="تاريخ الإنشاء")
@@ -93,11 +112,20 @@ class Transaction(models.Model):
         verbose_name = "معاملة"
         verbose_name_plural = "المعاملات"
         ordering = ["-date", "-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["farm", "idempotency_key"],
+                condition=Q(idempotency_key__isnull=False),
+                name="uniq_idem_per_farm",
+            ),
+        ]
         indexes = [
             models.Index(fields=["farm", "date"]),
             models.Index(fields=["farm", "tx_type", "status"]),
             models.Index(fields=["payment_mode"]),
             models.Index(fields=["is_return"]),
+            models.Index(fields=["farm", "counterparty"]),
+            models.Index(fields=["farm", "due_date"]),
         ]
 
     def __str__(self) -> str:
@@ -106,8 +134,32 @@ class Transaction(models.Model):
     def recalc_total(self) -> Decimal:
         agg = self.lines.aggregate(s=Sum("amount"))
         total = agg["s"] or Decimal("0.00")
-        self.total_amount = total
-        return total
+        self.total_amount = Decimal(total).quantize(Decimal("0.01"))
+        return self.total_amount
+
+    def recalc_financials(self, *, terms_days: int = 30, save: bool = False) -> None:
+        self.recalc_total()
+
+        paid = self.payments.aggregate(s=Sum("amount"))["s"] or Decimal("0.00")
+        paid = Decimal(paid).quantize(Decimal("0.01"))
+        self.amount_paid = paid
+
+        due = (self.total_amount - paid).quantize(Decimal("0.01"))
+        if due < 0:
+            due = Decimal("0.00")
+        self.amount_due = due
+
+        self.payment_mode = PaymentMode.CREDIT if self.amount_due > 0 else PaymentMode.PAID
+
+        if self.payment_mode == PaymentMode.PAID:
+            self.due_date = None
+
+        if self.payment_mode == PaymentMode.CREDIT and not self.due_date:
+            base = self.date or timezone.localdate()
+            self.due_date = base + timedelta(days=terms_days)
+
+        if save and self.pk:
+            self.save(update_fields=["total_amount", "amount_paid", "amount_due", "payment_mode", "due_date", "updated_at"])
 
 
 class LivestockKind(models.TextChoices):
@@ -165,6 +217,15 @@ class TransactionLine(models.Model):
         p = self.unit_price or Decimal("0.00")
         self.amount = (q * p).quantize(Decimal("0.01"))
         super().save(*args, **kwargs)
+        if self.transaction_id:
+            self.transaction.recalc_financials(save=True)
+
+    def delete(self, *args, **kwargs):
+        tx = self.transaction
+        res = super().delete(*args, **kwargs)
+        if tx:
+            tx.recalc_financials(save=True)
+        return res
 
 
 class PaymentMethod(models.TextChoices):
@@ -197,3 +258,19 @@ class Payment(models.Model):
 
     def __str__(self) -> str:
         return f"{self.amount} @ {self.date} (Tx {self.transaction_id})"
+
+    def save(self, *args, **kwargs):
+        if self.transaction_id:
+            self.farm = self.transaction.farm
+            if self.counterparty_id is None:
+                self.counterparty = self.transaction.counterparty
+        super().save(*args, **kwargs)
+        if self.transaction_id:
+            self.transaction.recalc_financials(save=True)
+
+    def delete(self, *args, **kwargs):
+        tx = self.transaction
+        res = super().delete(*args, **kwargs)
+        if tx:
+            tx.recalc_financials(save=True)
+        return res

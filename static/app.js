@@ -1,13 +1,71 @@
 (() => {
+  // ✅ Prevent double init (يحمي من الصفحة البيضاء/تكرار listeners)
+  if (window.__LIVESTOCK_UI_INIT__) return;
+  window.__LIVESTOCK_UI_INIT__ = true;
+
   const $ = (sel, root = document) => root.querySelector(sel);
   const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
   // ---------- utils ----------
+  // ✅ Parsing قوي: يقبل raw مثل "32200.00" ويقبل مُنسّق مثل "32,200.00" أو "32.200,00" أو "٣٢٬٢٠٠٫٠٠"
   const toNum = (v) => {
-    const n = Number(v);
+    if (v === null || v === undefined) return 0;
+    let s = String(v).trim();
+    if (!s) return 0;
+
+    // تحويل الأرقام العربية/الفارسية إلى لاتينية
+    const ar = "٠١٢٣٤٥٦٧٨٩";
+    const fa = "۰۱۲۳۴۵۶۷۸۹";
+    s = s.replace(/[٠-٩]/g, (ch) => String(ar.indexOf(ch)));
+    s = s.replace(/[۰-۹]/g, (ch) => String(fa.indexOf(ch)));
+
+    // Arabic separators: thousands "٬" (U+066C) and decimal "٫" (U+066B)
+    s = s.replace(/\u066C/g, ",").replace(/\u066B/g, ".");
+    s = s.replace(/\s/g, "");
+
+    // حذف أي رموز غير رقم/فواصل/إشارة
+    s = s.replace(/[^0-9.,+-]/g, "");
+
+    const hasComma = s.includes(",");
+    const hasDot = s.includes(".");
+
+    if (hasComma && hasDot) {
+      const lastComma = s.lastIndexOf(",");
+      const lastDot = s.lastIndexOf(".");
+      if (lastDot > lastComma) {
+        // "1,234.56" => comma thousands
+        s = s.replace(/,/g, "");
+      } else {
+        // "1.234,56" => dot thousands + comma decimal
+        s = s.replace(/\./g, "");
+        s = s.replace(/,/g, ".");
+      }
+    } else if (hasComma && !hasDot) {
+      // "1,234" thousands OR "1234,56" decimal comma
+      if (/^\d{1,3}(,\d{3})+$/.test(s)) s = s.replace(/,/g, "");
+      else s = s.replace(/,/g, ".");
+    } else if (hasDot && !hasComma) {
+      // "1.234.567" thousands dot OR "1234.56" decimal dot
+      if (/^\d{1,3}(\.\d{3})+$/.test(s)) s = s.replace(/\./g, "");
+    }
+
+    const n = Number(s);
     return Number.isFinite(n) ? n : 0;
   };
-  const money = (n) => (Math.max(0, toNum(n))).toFixed(2);
+
+  // ✅ للعرض فقط: 32,200.00 (آلاف بفاصلة + خانتين)
+  const __MONEY_NF = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+
+  // ✅ تقريب آمن لخانتين
+  const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
+  const moneyDisp = (v) => __MONEY_NF.format(round2(Math.max(0, toNum(v))));
+
+  // ✅ للإدخال + للإرسال للسيرفر: "60000.00" (raw بدون فواصل)
+  const moneyInput = (v) => round2(Math.max(0, toNum(v))).toFixed(2);
 
   const escapeHtml = (s) =>
     String(s ?? "")
@@ -35,6 +93,28 @@
     return j;
   }
 
+  // ✅ تطبيع حقول المال قبل الإرسال (Decimal v2)
+  function normalizeMoneyFields(data) {
+    if (!data || typeof data !== "object") return data;
+    const out = { ...data };
+    for (const [k, v] of Object.entries(out)) {
+      if (v === null || v === undefined) continue;
+
+      if (
+        k === "amount" ||
+        k === "unit_price" ||
+        k === "paid_amount" ||
+        k === "amount_paid" ||
+        k === "amount_due" ||
+        k === "total_amount" ||
+        /(_amount|_price)$/.test(k)
+      ) {
+        out[k] = moneyInput(v); // <-- string raw "0.00"
+      }
+    }
+    return out;
+  }
+
   async function postJSON(url, data) {
     const res = await fetch(url, {
       method: "POST",
@@ -42,7 +122,7 @@
         "Content-Type": "application/json",
         "X-CSRFToken": getCookie("csrftoken"),
       },
-      body: JSON.stringify(data),
+      body: JSON.stringify(normalizeMoneyFields(data)),
     });
 
     const txt = await res.text();
@@ -52,12 +132,11 @@
     } catch {}
 
     if (!res.ok) {
-      // تحسين رسالة حد الائتمان إذا رجعها السيرفر
       if (j && j.error && (j.outstanding || j.credit_limit || j.projected)) {
         const extra = [
-          j.outstanding != null ? `المستحق الحالي: ${j.outstanding}` : null,
-          j.credit_limit != null ? `حد الائتمان: ${j.credit_limit}` : null,
-          j.projected != null ? `بعد العملية: ${j.projected}` : null,
+          j.outstanding != null ? `المستحق الحالي: ${moneyDisp(j.outstanding)} ريال` : null,
+          j.credit_limit != null ? `حد الائتمان: ${moneyDisp(j.credit_limit)} ريال` : null,
+          j.projected != null ? `بعد العملية: ${moneyDisp(j.projected)} ريال` : null,
         ]
           .filter(Boolean)
           .join("\n");
@@ -70,7 +149,7 @@
 
   function stripCountLabel(t) {
     return String(t || "")
-      .replace(/^\(\s*[\d.]+\s*\)\s*/, "")
+      .replace(/^\(\s*[\d.,٬]+\s*\)\s*/, "")
       .trim();
   }
   function isTlyan(kind) {
@@ -95,16 +174,24 @@
   const panels = $$("[data-panel]");
   const panelByName = new Map(panels.map((p) => [p.getAttribute("data-panel"), p]));
 
+  // ✅ setTab آمن (يمنع إخفاء كل الأقسام عند hash غلط)
   function setTab(name) {
-    if (!tabs.length) return;
+    if (!panels.length) return;
 
-    tabs.forEach((t) => t.classList.toggle("active", t.getAttribute("data-tab") === name));
+    const safeName = panelByName.has(name) ? name : "purchase";
+
+    if (tabs.length) {
+      tabs.forEach((t) => t.classList.toggle("active", t.getAttribute("data-tab") === safeName));
+    }
+
     panels.forEach((p) => (p.style.display = "none"));
-    const target = panelByName.get(name);
-    if (target) target.style.display = "";
-    location.hash = `#${name}`;
 
-    if (name === "collections") refreshAging();
+    const target = panelByName.get(safeName) || panels[0];
+    if (target) target.style.display = "";
+
+    location.hash = `#${safeName}`;
+
+    if (safeName === "collections") refreshAging();
   }
 
   tabs.forEach((t) => t.addEventListener("click", () => setTab(t.getAttribute("data-tab"))));
@@ -237,19 +324,19 @@
   // ---------- calc ----------
   function calcPurchase() {
     const total = Math.max(0, toNum(pQty?.value)) * Math.max(0, toNum(pUnit?.value));
-    if (pTotal) pTotal.textContent = money(total);
+    if (pTotal) pTotal.textContent = moneyDisp(total);
     updateStockHints();
   }
 
   function calcSale() {
     const total = Math.max(0, toNum(sQty?.value)) * Math.max(0, toNum(sUnit?.value));
-    if (sTotal) sTotal.textContent = money(total);
+    if (sTotal) sTotal.textContent = moneyDisp(total);
 
     const mode = sPayMode?.value || "PAID";
 
     if (mode === "PAID") {
       if (sPaid) {
-        sPaid.value = money(total);
+        sPaid.value = moneyInput(total); // raw
         sPaid.disabled = true;
       }
       if (sDueHint) {
@@ -266,13 +353,11 @@
 
       if (sDueHint) {
         sDueHint.style.display = "";
-        sDueHint.textContent = `المتبقي (آجل): ${money(due)} ريال`;
+        sDueHint.textContent = `المتبقي (آجل): ${moneyDisp(due)} ريال`;
       }
 
-      // show due date only if due > 0
       if (sDueWrap) sDueWrap.style.display = due > 0 ? "" : "none";
 
-      // default due date: today + 30 days
       if (due > 0 && sDue && !sDue.value) {
         sDue.value = fmtLocalISO(addDays(new Date(), 30));
       }
@@ -332,7 +417,6 @@
     });
   }
 
-  // keep hints updated
   [pType, pClass, pQty, sType, sClass, sQty].forEach((el) => {
     if (!el) return;
     el.addEventListener("change", updateStockHints);
@@ -346,30 +430,14 @@
         const kind = pType?.value || "";
         const cls = pClass?.value || "";
         const quantity = Number(pQty?.value || 0);
-        const unit_price = Number(pUnit?.value || 0);
+        const unit_price = pUnit?.value ?? 0;
 
         const isT = isTlyan(kind);
 
-        if (!kind) {
-          alert("اختر نوع المواشي");
-          pType?.focus();
-          return;
-        }
-        if (isT && !cls) {
-          alert("اختر الصنف (جذع/ثني) للطليان");
-          pClass?.focus();
-          return;
-        }
-        if (quantity <= 0) {
-          alert("أدخل الكمية (أكبر من صفر)");
-          pQty?.focus();
-          return;
-        }
-        if (unit_price <= 0) {
-          alert("أدخل سعر الوحدة (أكبر من صفر)");
-          pUnit?.focus();
-          return;
-        }
+        if (!kind) { alert("اختر نوع المواشي"); pType?.focus(); return; }
+        if (isT && !cls) { alert("اختر الصنف (جذع/ثني) للطليان"); pClass?.focus(); return; }
+        if (quantity <= 0) { alert("أدخل الكمية (أكبر من صفر)"); pQty?.focus(); return; }
+        if (toNum(unit_price) <= 0) { alert("أدخل سعر الوحدة (أكبر من صفر)"); pUnit?.focus(); return; }
 
         pSave.disabled = true;
 
@@ -397,32 +465,16 @@
         const kind = sType?.value || "";
         const cls = sClass?.value || "";
         const quantity = Number(sQty?.value || 0);
-        const unit_price = Number(sUnit?.value || 0);
+        const unit_price = sUnit?.value ?? 0;
         const isT = isTlyan(kind);
 
-        if (!kind) {
-          alert("اختر نوع المواشي");
-          sType?.focus();
-          return;
-        }
-        if (isT && !cls) {
-          alert("اختر الصنف (جذع/ثني) للطليان");
-          sClass?.focus();
-          return;
-        }
-        if (quantity <= 0) {
-          alert("أدخل الكمية (أكبر من صفر)");
-          sQty?.focus();
-          return;
-        }
-        if (unit_price <= 0) {
-          alert("أدخل سعر الوحدة (أكبر من صفر)");
-          sUnit?.focus();
-          return;
-        }
+        if (!kind) { alert("اختر نوع المواشي"); sType?.focus(); return; }
+        if (isT && !cls) { alert("اختر الصنف (جذع/ثني) للطليان"); sClass?.focus(); return; }
+        if (quantity <= 0) { alert("أدخل الكمية (أكبر من صفر)"); sQty?.focus(); return; }
+        if (toNum(unit_price) <= 0) { alert("أدخل سعر الوحدة (أكبر من صفر)"); sUnit?.focus(); return; }
 
         const payment_mode = sPayMode?.value || "PAID";
-        const paid_amount = Number(sPaid?.value || 0);
+        const paid_amount = sPaid?.value ?? 0;
         const method = sMethod?.value || "CASH";
 
         const customer_name = String(nameInput?.value || "");
@@ -434,7 +486,6 @@
           return;
         }
 
-        // due_date optional
         let due_date = null;
         if (payment_mode === "CREDIT" && sDueWrap && sDueWrap.style.display !== "none" && sDue?.value) {
           due_date = sDue.value;
@@ -470,28 +521,42 @@
   // ---------- collections / aging ----------
   function setAgingValue(key, v) {
     const el = document.querySelector(`[data-a="${key}"]`);
-    if (el) el.textContent = money(v);
+    if (el) el.textContent = moneyDisp(v);
   }
 
   function renderAging(j) {
     const totals = (j && j.totals) || {};
-    const cur = toNum(totals.current);
-    const b1 = toNum(totals["1_30"]);
-    const b2 = toNum(totals["31_60"]);
-    const b3 = toNum(totals["61_90"]);
-    const b4 = toNum(totals["91_plus"]);
-    const all = cur + b1 + b2 + b3 + b4;
+
+    const cur = toNum(totals.current ?? totals.current_raw ?? totals.current_display);
+    const b1 = toNum(totals["1_30"] ?? totals.b1_30 ?? totals["b1_30"] ?? totals.b1_30_raw ?? totals.b1_30_display);
+    const b2 = toNum(totals["31_60"] ?? totals.b31_60 ?? totals["b31_60"] ?? totals.b31_60_raw ?? totals.b31_60_display);
+    const b3 = toNum(totals["61_90"] ?? totals.b61_90 ?? totals["b61_90"] ?? totals.b61_90_raw ?? totals.b61_90_display);
+    const b4 = toNum(
+      totals["91_plus"] ??
+        totals["90_plus"] ??
+        totals.b90_plus ??
+        totals["b90_plus"] ??
+        totals.b90_plus_raw ??
+        totals.b90_plus_display ??
+        0
+    );
+
+    const allKey = totals.total ?? totals.all ?? totals.total_raw ?? totals.total_display;
+    const all =
+      (allKey !== undefined && allKey !== null && String(allKey).trim() !== "")
+        ? toNum(allKey)
+        : (cur + b1 + b2 + b3 + b4);
 
     setAgingValue("current", cur);
     setAgingValue("1_30", b1);
     setAgingValue("31_60", b2);
     setAgingValue("61_90", b3);
     setAgingValue("91_plus", b4);
+    setAgingValue("90_plus", b4);
     setAgingValue("all", all);
 
-    if (agingMeta) agingMeta.textContent = `آخر تحديث: ${j.as_of || ""} — إجمالي الآجل: ${money(all)} ريال`;
+    if (agingMeta) agingMeta.textContent = `آخر تحديث: ${j.as_of || ""} — إجمالي الآجل: ${moneyDisp(all)} ريال`;
 
-    // Top overdue clients
     const top = (j && j.top_overdue_counterparties) || [];
     if (agingTopWrap) {
       if (!top.length) {
@@ -502,7 +567,7 @@
             const id = it.id;
             const name = escapeHtml(it.name || "");
             const phone = escapeHtml(it.phone || "");
-            const amt = money(it.overdue_amount);
+            const amt = moneyDisp(it.overdue_amount);
             const days = it.max_days ?? 0;
             return `
               <tr>
@@ -532,7 +597,6 @@
           </table>
         `;
 
-        // bind actions
         $$("[data-wa]", agingTopWrap).forEach((btn) => {
           btn.addEventListener("click", async () => {
             const id = btn.getAttribute("data-wa");
@@ -540,10 +604,7 @@
               btn.disabled = true;
               const r = await getJSON(`/transactions/api/clients/${id}/whatsapp-reminder/`);
               if (!r.ok) throw new Error(r.error || "فشل");
-              if (!r.wa_link) {
-                alert("لا يوجد رقم جوال لهذا العميل.");
-                return;
-              }
+              if (!r.wa_link) { alert("لا يوجد رقم جوال لهذا العميل."); return; }
               window.open(r.wa_link, "_blank", "noopener");
             } catch (e) {
               alert(String(e.message || e));
@@ -561,10 +622,7 @@
               const r = await getJSON(`/transactions/api/clients/${id}/whatsapp-reminder/`);
               if (!r.ok) throw new Error(r.error || "فشل");
               const msg = r.message || "";
-              if (!msg) {
-                alert("لا توجد رسالة.");
-                return;
-              }
+              if (!msg) { alert("لا توجد رسالة."); return; }
               if (navigator.clipboard?.writeText) {
                 await navigator.clipboard.writeText(msg);
                 alert("✅ تم نسخ الرسالة");
@@ -581,7 +639,6 @@
       }
     }
 
-    // Open transactions
     const txs = (j && j.open_transactions) || [];
     if (agingTxWrap) {
       if (!txs.length) {
@@ -592,7 +649,7 @@
           const cp = escapeHtml(tx.counterparty_name || "");
           const due = escapeHtml(tx.due_date || "");
           const days = tx.days_past_due ?? 0;
-          const amt = money(tx.amount_due);
+          const amt = moneyDisp(tx.amount_due);
           return `
             <tr>
               <td>${ref}<div style="color:rgba(243,247,255,.72); font-size:12px; margin-top:4px;">${cp || "—"}</div></td>
@@ -641,8 +698,6 @@
 
   // ---------- init ----------
   const hash = (location.hash || "").replace("#", "");
-  if (hash === "sale" || hash === "collections" || hash === "purchase") setTab(hash);
-  else if (tabs.length) setTab("purchase");
-
+  setTab(hash || "purchase");
   refreshStock();
 })();

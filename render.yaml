@@ -1,20 +1,35 @@
 ﻿databases:
   - name: livestockdb
-    plan: free
+    plan: free   # Pilot فقط
+    databaseName: livestock
+    user: livestock
 
 services:
   - type: web
     name: livestock
     runtime: python
-    plan: free
-    buildCommand: "./build.sh"
+    plan: free   # Pilot فقط
+
+    buildCommand: "bash build.sh"
     startCommand: "python -m gunicorn livestock.asgi:application -k uvicorn.workers.UvicornWorker"
+
     envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: livestock.settings_production
+
       - key: DATABASE_URL
         fromDatabase:
           name: livestockdb
           property: connectionString
-      - key: SECRET_KEY
+
+      - key: DJANGO_SECRET_KEY
         generateValue: true
-      - key: WEB_CONCURRENCY
-        value: "4"
+
+      - key: DJANGO_ALLOWED_HOSTS
+        value: ""
+
+      - key: DJANGO_CSRF_TRUSTED_ORIGINS
+        value: ""
+
+      - key: DJANGO_SECURE_HSTS_SECONDS
+        value: "3600"

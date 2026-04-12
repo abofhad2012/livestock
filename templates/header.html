@@ -1,20 +1,475 @@
-<header class="topbar">
-  <div class="topbar-inner topbar-compact">
+<style>
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .mobile-nav-toggle,
+  .mobile-nav-close,
+  .mobile-nav-backdrop {
+    display: none;
+  }
+
+  .mobile-nav-head {
+    display: none;
+  }
+
+  @media (max-width: 920px) {
+    .topbar[data-header-root] {
+      position: relative;
+      z-index: 1402;
+    }
+
+    .topbar [data-header-inner].topbar-inner.topbar-compact {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .topbar .brand.brand-compact {
+      min-width: 0;
+      flex: 1 1 auto;
+    }
+
+    .topbar .brand-name {
+      max-width: 52vw;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .mobile-nav-toggle {
+      display: inline-flex;
+      position: relative;
+      z-index: 1403;
+      flex: 0 0 auto;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 4px;
+      width: 44px;
+      height: 44px;
+      padding: 0;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.06);
+      cursor: pointer;
+    }
+
+    .mobile-nav-toggle:focus-visible,
+    .mobile-nav-close:focus-visible {
+      outline: 2px solid rgba(255, 255, 255, 0.9);
+      outline-offset: 2px;
+    }
+
+    .mobile-nav-toggle span {
+      display: block;
+      width: 20px;
+      height: 2px;
+      border-radius: 999px;
+      background: #ffffff;
+      transition: transform 0.25s ease, opacity 0.25s ease;
+    }
+
+    body.mobile-nav-open .mobile-nav-toggle {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    body.mobile-nav-open .mobile-nav-toggle span:nth-child(1) {
+      transform: translateY(6px) rotate(45deg);
+    }
+
+    body.mobile-nav-open .mobile-nav-toggle span:nth-child(2) {
+      opacity: 0;
+    }
+
+    body.mobile-nav-open .mobile-nav-toggle span:nth-child(3) {
+      transform: translateY(-6px) rotate(-45deg);
+    }
+
+    .topbar [data-drawer].topnav.topnav-compact {
+      position: fixed !important;
+      top: 0;
+      right: 0;
+      width: min(84vw, 320px);
+      height: 100dvh;
+      padding: 18px 16px 20px;
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: stretch !important;
+      justify-content: flex-start;
+      gap: 10px !important;
+      text-align: right;
+      background: linear-gradient(180deg, #041327 0%, #0a1e43 100%);
+      box-shadow: -18px 0 40px rgba(0, 0, 0, 0.35);
+      transform: translateX(110%);
+      visibility: hidden;
+      pointer-events: none;
+      transition: transform 0.28s ease, visibility 0s linear 0.28s;
+      z-index: 1401;
+      overflow-y: auto;
+      direction: rtl;
+    }
+
+    body.mobile-nav-open .topbar [data-drawer].topnav.topnav-compact {
+      transform: translateX(0);
+      visibility: visible;
+      pointer-events: auto;
+      transition: transform 0.28s ease;
+    }
+
+    .mobile-nav-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .mobile-nav-title {
+      color: #ffffff;
+      font-weight: 800;
+      font-size: 1rem;
+    }
+
+    .mobile-nav-close {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 40px;
+      height: 40px;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.06);
+      color: #ffffff;
+      font-size: 1.4rem;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .topbar [data-drawer] .sep {
+      display: none !important;
+    }
+
+    .topbar [data-drawer] .navlink.navlink-compact {
+      display: flex !important;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 14px;
+      text-decoration: none;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .topbar [data-drawer] .navlink.navlink-compact:hover,
+    .topbar [data-drawer] .navlink.navlink-compact:focus-visible {
+      background: rgba(255, 255, 255, 0.10);
+      outline: none;
+    }
+
+    .topbar [data-drawer] .navico {
+      flex: 0 0 auto;
+    }
+
+    .mobile-nav-backdrop {
+      display: block;
+      position: fixed;
+      inset: 0;
+      padding: 0;
+      margin: 0;
+      border: 0;
+      background: rgba(2, 8, 23, 0.48);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.28s ease;
+      z-index: 1400;
+    }
+
+    body.mobile-nav-open .mobile-nav-backdrop {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    body.mobile-nav-open {
+      overflow: hidden;
+    }
+
+    #purchase,
+    #sale {
+      scroll-margin-top: 90px;
+    }
+  }
+</style>
+
+<header class="topbar" data-header-root>
+  <div class="topbar-inner topbar-compact" data-header-inner>
     <a class="brand brand-compact" href="/" aria-label="محاسبة المواشي">
       <span class="brand-dot" aria-hidden="true">🐑</span>
       <span class="brand-name">محاسبة المواشي</span>
     </a>
 
-    <nav class="topnav topnav-compact" aria-label="القائمة">
-      <a href="/" class="navlink navlink-compact"><span class="navico">🏠</span> الرئيسية</a>
+    <button
+      type="button"
+      class="mobile-nav-toggle"
+      aria-label="فتح القائمة"
+      aria-controls="site-mobile-nav"
+      aria-expanded="false"
+      data-nav-toggle
+    >
+      <span aria-hidden="true"></span>
+      <span aria-hidden="true"></span>
+      <span aria-hidden="true"></span>
+      <span class="sr-only">فتح القائمة</span>
+    </button>
+
+    <nav
+      id="site-mobile-nav"
+      class="topnav topnav-compact"
+      aria-label="القائمة"
+      data-drawer
+    >
+      <div class="mobile-nav-head">
+        <div class="mobile-nav-title">القائمة</div>
+        <button
+          type="button"
+          class="mobile-nav-close"
+          aria-label="إغلاق القائمة"
+          data-nav-close
+        >
+          ×
+        </button>
+      </div>
+
+      <a href="/" class="navlink navlink-compact">
+        <span class="navico">🏠</span> الرئيسية
+      </a>
+
       <span class="sep">|</span>
-      <a href="#purchase" class="navlink navlink-compact"><span class="navico plus">＋</span> الشراء</a>
+
+      <a
+        href="/#purchase"
+        class="navlink navlink-compact"
+        data-open-panel="purchase"
+      >
+        <span class="navico plus">＋</span> الشراء
+      </a>
+
       <span class="sep">|</span>
-      <a href="#sale" class="navlink navlink-compact"><span class="navico minus">－</span> البيع</a>
+
+      <a
+        href="/#sale"
+        class="navlink navlink-compact"
+        data-open-panel="sale"
+      >
+        <span class="navico minus">－</span> البيع
+      </a>
+
       <span class="sep">|</span>
-      <a href="/reports/summary/" class="navlink navlink-compact"><span class="navico">📄</span> التقارير</a>
-      <span class="sep">|</span>
-      <a href="/admin/" class="navlink navlink-compact"><span class="navico">⚙️</span> الإدارة</a>
+
+      <a href="/reports/summary/" class="navlink navlink-compact">
+        <span class="navico">📄</span> التقارير
+      </a>
+
+      {% if user.is_staff %}
+        <span class="sep">|</span>
+
+        <a href="{% url 'admin:index' %}" class="navlink navlink-compact">
+          <span class="navico">⚙️</span> الإدارة
+        </a>
+      {% endif %}
     </nav>
   </div>
 </header>
+
+<button
+  type="button"
+  class="mobile-nav-backdrop"
+  aria-label="إغلاق القائمة"
+  data-nav-backdrop
+></button>
+
+<script>
+(function () {
+  const root = document.querySelector("[data-header-root]");
+  if (!root || root.dataset.bound === "1") return;
+  root.dataset.bound = "1";
+
+  const body = document.body;
+  const toggleBtn = root.querySelector("[data-nav-toggle]");
+  const closeBtn = root.querySelector("[data-nav-close]");
+  const drawer = root.querySelector("[data-drawer]");
+  const backdrop = document.querySelector("[data-nav-backdrop]");
+  const allNavLinks = root.querySelectorAll(".topnav .navlink");
+  const panelLinks = root.querySelectorAll("[data-open-panel]");
+
+  function isMobile() {
+    return window.matchMedia("(max-width: 920px)").matches;
+  }
+
+  function openMenu() {
+    body.classList.add("mobile-nav-open");
+    if (toggleBtn) toggleBtn.setAttribute("aria-expanded", "true");
+    if (drawer) drawer.setAttribute("aria-hidden", "false");
+  }
+
+  function closeMenu() {
+    body.classList.remove("mobile-nav-open");
+    if (toggleBtn) toggleBtn.setAttribute("aria-expanded", "false");
+
+    if (drawer) {
+      if (isMobile()) {
+        drawer.setAttribute("aria-hidden", "true");
+      } else {
+        drawer.removeAttribute("aria-hidden");
+      }
+    }
+  }
+
+  function syncMenuState() {
+    if (!drawer || !toggleBtn) return;
+
+    if (isMobile()) {
+      if (body.classList.contains("mobile-nav-open")) {
+        toggleBtn.setAttribute("aria-expanded", "true");
+        drawer.setAttribute("aria-hidden", "false");
+      } else {
+        toggleBtn.setAttribute("aria-expanded", "false");
+        drawer.setAttribute("aria-hidden", "true");
+      }
+    } else {
+      body.classList.remove("mobile-nav-open");
+      toggleBtn.setAttribute("aria-expanded", "false");
+      drawer.removeAttribute("aria-hidden");
+    }
+  }
+
+  function toggleMenu() {
+    if (body.classList.contains("mobile-nav-open")) {
+      closeMenu();
+    } else {
+      openMenu();
+    }
+  }
+
+  function getPanels() {
+    return {
+      purchase: document.getElementById("purchase"),
+      sale: document.getElementById("sale"),
+    };
+  }
+
+  function canSwitchPanelsHere() {
+    const panels = getPanels();
+    return !!(panels.purchase && panels.sale);
+  }
+
+  function showHomePanel(panelName, scrollToPanel = true) {
+    const panels = getPanels();
+    if (!panels.purchase || !panels.sale) return;
+
+    const showSale = panelName === "sale";
+
+    panels.purchase.style.display = showSale ? "none" : "";
+    panels.sale.style.display = showSale ? "" : "none";
+
+    panels.purchase.setAttribute("aria-hidden", showSale ? "true" : "false");
+    panels.sale.setAttribute("aria-hidden", showSale ? "false" : "true");
+
+    const target = showSale ? panels.sale : panels.purchase;
+
+    if (scrollToPanel) {
+      requestAnimationFrame(function () {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }
+
+  function applyHashOnCurrentPage() {
+    if (!canSwitchPanelsHere()) return;
+
+    const hash = (window.location.hash || "").replace("#", "").trim();
+
+    if (hash === "sale") {
+      showHomePanel("sale", false);
+      return;
+    }
+
+    if (hash === "purchase") {
+      showHomePanel("purchase", false);
+    }
+  }
+
+  if (toggleBtn) {
+    toggleBtn.addEventListener("click", toggleMenu);
+  }
+
+  if (closeBtn) {
+    closeBtn.addEventListener("click", closeMenu);
+  }
+
+  if (backdrop) {
+    backdrop.addEventListener("click", closeMenu);
+  }
+
+  allNavLinks.forEach(function (link) {
+    link.addEventListener("click", function () {
+      if (isMobile()) {
+        closeMenu();
+      }
+    });
+  });
+
+  panelLinks.forEach(function (link) {
+    link.addEventListener("click", function (event) {
+      const panel = link.getAttribute("data-open-panel");
+      if (!panel) return;
+
+      if (canSwitchPanelsHere()) {
+        event.preventDefault();
+
+        const newHash = "#" + panel;
+        if (window.location.hash !== newHash) {
+          history.replaceState(null, "", newHash);
+        }
+
+        showHomePanel(panel, true);
+      }
+    });
+  });
+
+  window.addEventListener("hashchange", applyHashOnCurrentPage);
+
+  window.addEventListener("resize", function () {
+    syncMenuState();
+  });
+
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape") {
+      closeMenu();
+    }
+  });
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function () {
+      syncMenuState();
+      applyHashOnCurrentPage();
+    });
+  } else {
+    syncMenuState();
+    applyHashOnCurrentPage();
+  }
+})();
+</script>
