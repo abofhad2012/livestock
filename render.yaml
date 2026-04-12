@@ -8,11 +8,8 @@ services:
   - type: web
     name: livestock
     runtime: python
-    plan: free   # Pilot فقط
-
     buildCommand: "bash build.sh"
     startCommand: "python -m gunicorn livestock.asgi:application -k uvicorn.workers.UvicornWorker"
-
     envVars:
       - key: DJANGO_SETTINGS_MODULE
         value: livestock.settings_production

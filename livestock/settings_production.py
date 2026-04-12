@@ -14,7 +14,6 @@ def env_bool(name: str, default: bool = False) -> bool:
 
 DEBUG = False
 
-# يدعم بيئتك المحلية وRender
 SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY") or os.environ.get("SECRET_KEY")
 if not SECRET_KEY:
     raise RuntimeError("Set DJANGO_SECRET_KEY or SECRET_KEY")
