@@ -1,21 +1,24 @@
-﻿.venv/
+﻿# Python / Django
+.venv/
 __pycache__/
 *.pyc
-db.sqlite3
-staticfiles/
-media/
-.env
-.DS_Store
-# local/dev artifacts
-.venv/
-staticfiles/
-media/
-db.sqlite3
-*.sqlite3.bak*
-*.bak
-*.bak_*
-__pycache__/
+*.pyo
+*.pyd
 .pytest_cache/
 .coverage
 
+# local env / database
+.env
+db.sqlite3
+*.sqlite3.bak*
+
+# generated files
+staticfiles/
+media/
+
+# archives / backups
+_archive/
 *.bak*
+
+# OS noise
+.DS_Store
