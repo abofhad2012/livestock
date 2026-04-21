@@ -4,46 +4,320 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>معاينة | {{ tx.reference }}</title>
+
   <style>
-    body{font-family:system-ui,Segoe UI,Arial;margin:0;background:#0b1220;color:#eef4ff}
-    .wrap{width:min(900px,92%);margin:18px auto}
-    .card{background:rgba(11,23,51,.65);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:16px}
-    .row{display:flex;gap:10px;flex-wrap:wrap}
-    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.06);color:#eef4ff;text-decoration:none}
-    .btn:hover{background:rgba(255,255,255,.10)}
-    table{width:100%;border-collapse:collapse;margin-top:10px}
-    th,td{border-bottom:1px solid rgba(255,255,255,.10);padding:10px;text-align:right}
-    .muted{color:rgba(238,244,255,.7)}
+    body{
+      font-family:system-ui,Segoe UI,Arial;
+      margin:0;
+      background:#0b1220;
+      color:#eef4ff;
+    }
+
+    .wrap{
+      width:min(900px,92%);
+      margin:18px auto;
+    }
+
+    .card{
+      background:rgba(11,23,51,.65);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:14px;
+      padding:16px;
+    }
+
+    .row{
+      display:flex;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+
+    .btn{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.10);
+      background:rgba(255,255,255,.06);
+      color:#eef4ff;
+      text-decoration:none;
+      cursor:pointer;
+      font:inherit;
+    }
+
+    .btn:hover{
+      background:rgba(255,255,255,.10);
+    }
+
+    .btn.danger{
+      background:rgba(239,68,68,.18);
+      border-color:rgba(239,68,68,.45);
+      color:#fecaca;
+    }
+
+    .btn.danger:hover{
+      background:rgba(239,68,68,.28);
+    }
+
+    .cancel-tx-form{
+      display:inline-flex;
+      margin:0;
+    }
+
+    .tx-status-badge{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      gap:6px;
+      padding:10px 12px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.10);
+      background:rgba(255,255,255,.04);
+      color:rgba(238,244,255,.85);
+      font-weight:800;
+    }
+
+    .tx-status-badge.posted{
+      border-color:rgba(34,197,94,.35);
+      background:rgba(34,197,94,.10);
+      color:#bbf7d0;
+    }
+
+    .tx-status-badge.canceled{
+      border-color:rgba(239,68,68,.35);
+      background:rgba(239,68,68,.10);
+      color:#fecaca;
+    }
+
+    .alert{
+      margin-top:14px;
+      padding:12px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.10);
+      background:rgba(255,255,255,.04);
+      color:rgba(238,244,255,.82);
+      line-height:1.8;
+    }
+
+    table{
+      width:100%;
+      border-collapse:collapse;
+      margin-top:10px;
+    }
+
+    th,td{
+      border-bottom:1px solid rgba(255,255,255,.10);
+      padding:10px;
+      text-align:right;
+    }
+
+    th{
+      color:rgba(238,244,255,.78);
+      width:32%;
+    }
+
+    .muted{
+      color:rgba(238,244,255,.7);
+    }
+
+    @media (max-width: 600px){
+      .row{
+        align-items:stretch;
+      }
+
+      .btn,
+      .tx-status-badge,
+      .cancel-tx-form,
+      .cancel-tx-form button{
+        width:100%;
+      }
+
+      th,td{
+        display:block;
+        width:100%;
+      }
+
+      th{
+        border-bottom:0;
+        padding-bottom:2px;
+      }
+
+      td{
+        padding-top:2px;
+      }
+    }
   </style>
 </head>
+
 <body>
   <div class="wrap">
     <div class="card">
+
       <div class="row" style="justify-content:space-between;align-items:center">
         <div>
           <h2 style="margin:0">{{ tx.get_tx_type_display }} — {{ tx.reference }}</h2>
           <div class="muted">التاريخ: {{ tx.date }}</div>
         </div>
+
         <div class="row">
           <a class="btn" href="/reports/tx/{{ tx.id }}/pdf/" target="_blank">📄 عرض PDF</a>
+
+          {% if tx.status == "POSTED" %}
+            <span class="tx-status-badge posted">الحالة: {{ tx.get_status_display }}</span>
+          {% elif tx.status == "CANCELED" %}
+            <span class="tx-status-badge canceled">الحالة: {{ tx.get_status_display }}</span>
+          {% else %}
+            <span class="tx-status-badge">الحالة: {{ tx.get_status_display }}</span>
+          {% endif %}
+
+          {% if perms.transactions.change_transaction and tx.status == "POSTED" %}
+            <form
+              id="cancelTxForm"
+              class="cancel-tx-form"
+              data-cancel-url="/transactions/api/tx/{{ tx.id }}/cancel/"
+              method="post"
+            >
+              {% csrf_token %}
+              <button class="btn danger" type="submit">إلغاء العملية</button>
+            </form>
+          {% endif %}
+
           <a class="btn" href="/reports/summary/">📊 التقارير</a>
           <a class="btn" href="/">⬅ الرئيسية</a>
         </div>
       </div>
 
+      {% if tx.status == "CANCELED" %}
+        <div class="alert">
+          هذه العملية ملغاة، ولن تدخل في التقارير أو حسابات المخزون. بقيت في السجل للمراجعة فقط.
+        </div>
+      {% endif %}
+
       <table>
-        <tr><th>نوع المواشي</th><td>{{ line.get_livestock_kind_display }}</td></tr>
-        <tr><th>الصنف</th><td>{% if line.livestock_class != "NONE" %}{{ line.get_livestock_class_display }}{% else %}—{% endif %}</td></tr>
-        <tr><th>الكمية</th><td>{{ line.quantity }}</td></tr>
-        <tr><th>سعر الوحدة</th><td>{{ line.unit_price }} ريال</td></tr>
-        <tr><th>الإجمالي</th><td>{{ tx.total_amount }} ريال</td></tr>
-        <tr><th>طريقة الدفع</th><td>{{ tx.get_payment_mode_display }}</td></tr>
-        <tr><th>المدفوع</th><td>{{ tx.amount_paid }} ريال</td></tr>
-        <tr><th>المتبقي (آجل)</th><td>{{ tx.amount_due }} ريال</td></tr>
-        <tr><th>العميل</th><td>{{ tx.customer_name|default:"—" }}</td></tr>
-        <tr><th>الجوال</th><td>{{ tx.customer_phone|default:"—" }}</td></tr>
+        <tr>
+          <th>نوع العملية</th>
+          <td>{{ tx.get_tx_type_display }}</td>
+        </tr>
+
+        <tr>
+          <th>حالة العملية</th>
+          <td>{{ tx.get_status_display }}</td>
+        </tr>
+
+        <tr>
+          <th>نوع المواشي</th>
+          <td>{{ line.get_livestock_kind_display }}</td>
+        </tr>
+
+        <tr>
+          <th>الصنف</th>
+          <td>
+            {% if line.livestock_class != "NONE" %}
+              {{ line.get_livestock_class_display }}
+            {% else %}
+              —
+            {% endif %}
+          </td>
+        </tr>
+
+        <tr>
+          <th>الكمية</th>
+          <td>{{ line.quantity }}</td>
+        </tr>
+
+        <tr>
+          <th>سعر الوحدة</th>
+          <td>{{ line.unit_price }} ريال</td>
+        </tr>
+
+        <tr>
+          <th>الإجمالي</th>
+          <td>{{ tx.total_amount }} ريال</td>
+        </tr>
+
+        <tr>
+          <th>طريقة الدفع</th>
+          <td>{{ tx.get_payment_mode_display }}</td>
+        </tr>
+
+        <tr>
+          <th>المدفوع</th>
+          <td>{{ tx.amount_paid }} ريال</td>
+        </tr>
+
+        <tr>
+          <th>المتبقي (آجل)</th>
+          <td>{{ tx.amount_due }} ريال</td>
+        </tr>
+
+        <tr>
+          <th>العميل</th>
+          <td>{{ tx.customer_name|default:"—" }}</td>
+        </tr>
+
+        <tr>
+          <th>الجوال</th>
+          <td>{{ tx.customer_phone|default:"—" }}</td>
+        </tr>
       </table>
     </div>
   </div>
+
+  <script>
+    (function(){
+      const form = document.getElementById("cancelTxForm");
+      if (!form) return;
+
+      form.addEventListener("submit", function(e){
+        e.preventDefault();
+
+        const ok = confirm("هل تريد إلغاء هذه العملية؟ لن تُحذف من السجل، لكنها لن تدخل في التقارير والمخزون.");
+        if (!ok) return;
+
+        const tokenInput = form.querySelector("[name=csrfmiddlewaretoken]");
+        if (!tokenInput) {
+          alert("تعذر قراءة CSRF token.");
+          return;
+        }
+
+        const btn = form.querySelector("button[type=submit]");
+        if (btn) {
+          btn.disabled = true;
+          btn.textContent = "جارٍ الإلغاء...";
+        }
+
+        fetch(form.dataset.cancelUrl, {
+          method: "POST",
+          credentials: "same-origin",
+          headers: {
+            "X-CSRFToken": tokenInput.value,
+            "X-Requested-With": "XMLHttpRequest"
+          }
+        })
+        .then(async function(response){
+          let payload = {};
+          try {
+            payload = await response.json();
+          } catch (err) {}
+
+          if (!response.ok || !payload.ok) {
+            throw new Error(payload.error || "تعذر إلغاء العملية.");
+          }
+
+          alert("تم إلغاء العملية بنجاح.");
+          window.location.reload();
+        })
+        .catch(function(err){
+          alert(err.message || "تعذر إلغاء العملية.");
+
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = "إلغاء العملية";
+          }
+        });
+      });
+    })();
+  </script>
 </body>
 </html>

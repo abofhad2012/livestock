@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="utf-8" />
@@ -9,7 +9,7 @@
     .wrap{width:min(1200px,92%);margin:18px auto}
     .card{background:rgba(11,23,51,.65);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:16px;margin:12px 0}
     .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;justify-content:space-between}
-    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.06);color:#eef4ff;text-decoration:none}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;padding:10px 12px;border-radius:12px;border:1px solid rgba(255,255,255,.10);background:rgba(255,255,255,.06);color:#eef4ff;text-decoration:none;cursor:pointer}
     .btn:hover{background:rgba(255,255,255,.10)}
     input{height:40px;border-radius:10px;border:1px solid rgba(255,255,255,.10);padding:0 10px}
     .muted{color:rgba(238,244,255,.7)}
@@ -19,6 +19,9 @@
     .kpi .v{font-size:18px;font-weight:900;margin-top:6px}
     .pos{color:#22c55e;font-weight:900}
     .neg{color:#ef4444;font-weight:900}
+
+    .quick-filters{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:center}
+    .quick-filters .btn{padding:8px 10px;font-size:13px}
 
     .table-scroll{overflow:auto;border-radius:14px;border:1px solid rgba(255,255,255,.08)}
     table{width:max(900px,100%);border-collapse:collapse;background:rgba(255,255,255,.03)}
@@ -44,20 +47,33 @@
         </div>
       </div>
 
-      <form method="get" class="row" style="margin-top:12px;justify-content:flex-start">
+      <form id="analyticsFilterForm" method="get" class="row" style="margin-top:12px;justify-content:flex-start">
         <div>
           <span class="muted">من:</span>
-          <input type="date" name="from" value="{{ date_from }}">
+          <input id="dateFrom" type="date" name="from" value="{{ date_from }}">
         </div>
         <div>
           <span class="muted">إلى:</span>
-          <input type="date" name="to" value="{{ date_to }}">
+          <input id="dateTo" type="date" name="to" value="{{ date_to }}">
         </div>
         <button class="btn" type="submit">تحديث</button>
       </form>
+
+      <div class="quick-filters">
+        <span class="muted">فترات سريعة:</span>
+        <button class="btn" type="button" data-range="today">اليوم</button>
+        <button class="btn" type="button" data-range="yesterday">أمس</button>
+        <button class="btn" type="button" data-range="7">آخر 7 أيام</button>
+        <button class="btn" type="button" data-range="month">هذا الشهر</button>
+        <button class="btn" type="button" data-range="30">آخر 30 يوم</button>
+        <button class="btn" type="button" data-range="180">آخر 180 يوم</button>
+      </div>
     </div>
 
     <div class="card">
+      <div class="muted" style="margin-bottom:10px">
+        هذه الأرقام تمثل حركة الفترة المختارة فقط، وليست كامل السجل المحاسبي.
+      </div>
       <div class="grid">
         <div class="kpi"><div class="k">إجمالي المبيعات</div><div class="v">{{ sales_total }} ريال</div></div>
         <div class="kpi"><div class="k">إجمالي المشتريات</div><div class="v">{{ purchases_total }} ريال</div></div>
@@ -114,6 +130,73 @@
 
   <script>
     (function(){
+      const form = document.getElementById("analyticsFilterForm");
+      const fromInput = document.getElementById("dateFrom");
+      const toInput = document.getElementById("dateTo");
+
+      function pad(n){
+        return String(n).padStart(2, "0");
+      }
+
+      function fmt(d){
+        return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+      }
+
+      function setRange(start, end){
+        fromInput.value = fmt(start);
+        toInput.value = fmt(end);
+        form.submit();
+      }
+
+      document.querySelectorAll("[data-range]").forEach(function(btn){
+        btn.addEventListener("click", function(){
+          const range = btn.getAttribute("data-range");
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+
+          const start = new Date(today);
+          const end = new Date(today);
+
+          if (range === "today") {
+            setRange(today, today);
+            return;
+          }
+
+          if (range === "yesterday") {
+            start.setDate(today.getDate() - 1);
+            end.setDate(today.getDate() - 1);
+            setRange(start, end);
+            return;
+          }
+
+          if (range === "7") {
+            start.setDate(today.getDate() - 6);
+            setRange(start, end);
+            return;
+          }
+
+          if (range === "month") {
+            start.setDate(1);
+            setRange(start, end);
+            return;
+          }
+
+          if (range === "30") {
+            start.setDate(today.getDate() - 29);
+            setRange(start, end);
+            return;
+          }
+
+          if (range === "180") {
+            start.setDate(today.getDate() - 179);
+            setRange(start, end);
+            return;
+          }
+        });
+      });
+    })();
+
+    (function(){
       const labels = JSON.parse(document.getElementById("labels").textContent);
       const sales = JSON.parse(document.getElementById("sales").textContent);
       const purchases = JSON.parse(document.getElementById("purchases").textContent);
@@ -131,7 +214,6 @@
 
       const maxV = Math.max(...sales, ...purchases, 1);
 
-      // axes
       ctx.clearRect(0,0,W,H);
       ctx.strokeStyle = "rgba(255,255,255,.18)";
       ctx.lineWidth = 1;
@@ -164,17 +246,15 @@
         ctx.fillStyle = "rgba(255,255,255,.85)";
       }
 
-      // bars
       for (let i=0;i<n;i++){
         const gx = padL + i*groupW + (groupW/2);
         const xBuy = gx - barW - (gap/2);
         const xSell = gx + (gap/2);
 
-        drawBar(xBuy, purchases[i] || 0, "rgba(43,118,198,.95)");   // شراء = أزرق
-        drawBar(xSell, sales[i] || 0, "rgba(34,197,94,.95)");       // بيع = أخضر
+        drawBar(xBuy, purchases[i] || 0, "rgba(43,118,198,.95)");
+        drawBar(xSell, sales[i] || 0, "rgba(34,197,94,.95)");
       }
 
-      // labels
       ctx.fillStyle = "rgba(238,244,255,.85)";
       ctx.font = "11px system-ui, Segoe UI, Arial";
       ctx.textAlign = "center";
@@ -185,7 +265,6 @@
         ctx.fillText(t, gx, H - 26);
       }
 
-      // legend
       ctx.textAlign = "right";
       ctx.fillStyle = "rgba(238,244,255,.85)";
       ctx.fillText("أزرق=شراء  |  أخضر=بيع", W - padR, 14);

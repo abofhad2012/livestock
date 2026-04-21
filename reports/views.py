@@ -248,10 +248,11 @@ def tx_pdf(request, tx_id: int):
 def analytics(request):
     today = timezone.localdate()
 
+    # الافتراضي: عرض حركة اليوم فقط حتى لا تتراكم أرقام آخر 30 يوم تلقائياً
     date_to = _parse_date(request.GET.get("to") or str(today), today)
     date_from = _parse_date(
-        request.GET.get("from") or str(date_to - timedelta(days=29)),
-        date_to - timedelta(days=29),
+        request.GET.get("from") or str(date_to),
+        date_to,
     )
 
     date_from, date_to = _normalize_date_range(date_from, date_to)
