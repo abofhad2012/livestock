@@ -283,7 +283,7 @@
         <span class="navico">📄</span> التقارير
       </a>
 
-      {% if user.is_staff %}
+      {% if user.is_superuser %}
         <span class="sep">|</span>
 
         <a href="{% url 'admin:index' %}" class="navlink navlink-compact">

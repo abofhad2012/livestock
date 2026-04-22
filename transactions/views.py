@@ -10,7 +10,7 @@ from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
-from accounts.models import Profile
+from accounts.models import FarmMembership, Profile
 from core.models import Farm
 
 from .models import (
@@ -35,16 +35,37 @@ DEFAULT_TERMS_DAYS = 30  # ✅ شهر افتراضي
 
 
 def _get_farm_for_user(user):
-    # 1) profile.farm
+    """
+    يرجع المنشأة المرتبطة بالمستخدم الحالي فقط.
+
+    مهم أمنيًا:
+    لا نرجع أول Farm في قاعدة البيانات كـ fallback، لأن هذا قد يربط
+    المستخدم الجديد ببيانات مستخدم آخر.
+    """
+    if not user or not user.is_authenticated:
+        return None
+
+    # 1) Profile.farm
     try:
-        p = Profile.objects.select_related("farm").get(user=user)
-        if p.farm:
-            return p.farm
-    except Exception:
+        profile = Profile.objects.select_related("farm").get(user=user, is_active=True)
+        if profile.farm and profile.farm.is_active:
+            return profile.farm
+    except Profile.DoesNotExist:
         pass
 
-    # 2) أول منشأة (Fallback) — يفضّل لاحقًا ربطها بالمستخدم فقط
-    return Farm.objects.order_by("id").first()
+    # 2) Active FarmMembership
+    membership = (
+        FarmMembership.objects
+        .select_related("farm")
+        .filter(user=user, is_active=True, farm__is_active=True)
+        .order_by("id")
+        .first()
+    )
+    if membership:
+        return membership.farm
+
+    # لا ترجع أول منشأة أبدًا؛ هذا يمنع تسريب بيانات مستخدم آخر.
+    return None
 
 
 def _fmt_money(x, places: int = 2) -> str:
