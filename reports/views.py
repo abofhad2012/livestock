@@ -2,13 +2,12 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from django.contrib.auth.decorators import login_required, permission_required
-from django.db.models import Sum
+from django.db.models import Q, Sum
 from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 
-from accounts.models import Profile
-from core.models import Farm
+from accounts.models import FarmMembership, Profile
 from transactions.models import Transaction, TransactionLine, TransactionStatus, TransactionType
 
 from .pdf_fonts import register_arabic_fonts
@@ -29,18 +28,52 @@ def _normalize_date_range(date_from: date, date_to: date):
 
 
 def _get_farm_for_user(user):
+    """
+    يرجع المنشأة المرتبطة بالمستخدم الحالي فقط.
+
+    مهم أمنيًا:
+    لا نرجع أول Farm في قاعدة البيانات كـ fallback، لأن هذا قد يسمح
+    لمستخدم جديد أو غير مربوط بمنشأة أن يرى بيانات مستخدم آخر.
+    """
+    if not user or not user.is_authenticated:
+        return None
+
+    # 1) Profile.farm
     try:
-        p = Profile.objects.select_related("farm").get(user=user)
-        if p.farm:
-            return p.farm
-    except Exception:
+        profile = Profile.objects.select_related("farm").get(user=user, is_active=True)
+        if profile.farm and profile.farm.is_active:
+            return profile.farm
+    except Profile.DoesNotExist:
         pass
 
-    return Farm.objects.order_by("id").first()
+    # 2) Active FarmMembership
+    membership = (
+        FarmMembership.objects
+        .select_related("farm")
+        .filter(user=user, is_active=True, farm__is_active=True)
+        .order_by("id")
+        .first()
+    )
+    if membership:
+        return membership.farm
+
+    # لا ترجع أول منشأة أبدًا؛ هذا يمنع تسريب بيانات مستخدم آخر.
+    return None
+
+
+def _transaction_qs_for_user(user):
+    farm = _get_farm_for_user(user)
+    if not farm:
+        return Transaction.objects.none()
+    return Transaction.objects.filter(farm=farm)
 
 
 def _tx_base_qs(user, date_from: date, date_to: date):
     farm = _get_farm_for_user(user)
+
+    if not farm:
+        return None, Transaction.objects.none()
+
     qs = Transaction.objects.filter(
         farm=farm,
         date__range=[date_from, date_to],
@@ -51,6 +84,9 @@ def _tx_base_qs(user, date_from: date, date_to: date):
 
 
 def _build_breakdown(farm, date_from: date, date_to: date):
+    if not farm:
+        return []
+
     kind_map = dict(TransactionLine._meta.get_field("livestock_kind").choices)
     cls_map = dict(TransactionLine._meta.get_field("livestock_class").choices)
 
@@ -60,21 +96,60 @@ def _build_breakdown(farm, date_from: date, date_to: date):
         transaction__is_return=False,
         transaction__date__range=[date_from, date_to],
     )
+
     grouped = (
         line_qs.values("livestock_kind", "livestock_class")
-        .annotate(qty=Sum("quantity"), amt=Sum("amount"))
+        .annotate(
+            buy_qty=Sum("quantity", filter=Q(transaction__tx_type=TransactionType.PURCHASE)),
+            sell_qty=Sum("quantity", filter=Q(transaction__tx_type=TransactionType.SALE)),
+            buy_amt=Sum("amount", filter=Q(transaction__tx_type=TransactionType.PURCHASE)),
+            sell_amt=Sum("amount", filter=Q(transaction__tx_type=TransactionType.SALE)),
+        )
         .order_by("livestock_kind", "livestock_class")
     )
 
-    return [
-        {
-            "kind": kind_map.get(r["livestock_kind"], r["livestock_kind"]),
-            "cls": cls_map.get(r["livestock_class"], r["livestock_class"]),
-            "qty": r["qty"] or 0,
-            "amt": r["amt"] or Decimal("0.00"),
-        }
-        for r in grouped
-    ]
+    rows = []
+    for r in grouped:
+        kind_code = r["livestock_kind"]
+        class_code = r["livestock_class"]
+
+        kind_label = kind_map.get(kind_code, kind_code)
+        class_label = (
+            cls_map.get(class_code, class_code)
+            if class_code and class_code != "NONE"
+            else "—"
+        )
+
+        buy_qty = Decimal(str(r["buy_qty"] or "0"))
+        sell_qty = Decimal(str(r["sell_qty"] or "0"))
+        buy_amt = Decimal(str(r["buy_amt"] or "0"))
+
+        net_qty = buy_qty - sell_qty
+
+        if buy_qty > 0 and net_qty > 0:
+            avg_buy_cost = buy_amt / buy_qty
+            stock_value = net_qty * avg_buy_cost
+        else:
+            stock_value = Decimal("0.00")
+
+        rows.append(
+            {
+                # keep old keys so summary/pdf templates do not break
+                "kind": kind_label,
+                "cls": class_label,
+                "qty": net_qty,
+                "amt": stock_value.quantize(Decimal("0.01")),
+                # extra details for future use
+                "buy_qty": buy_qty,
+                "sell_qty": sell_qty,
+                "net_qty": net_qty,
+                "buy_amt": buy_amt.quantize(Decimal("0.01")),
+                "sell_amt": Decimal(str(r["sell_amt"] or "0")).quantize(Decimal("0.01")),
+                "stock_value": stock_value.quantize(Decimal("0.01")),
+            }
+        )
+
+    return rows
 
 
 def _build_summary_data(user, date_from: date, date_to: date):
@@ -206,18 +281,20 @@ def summary_pdf(request):
     resp["Content-Disposition"] = (
         f'inline; filename="summary_{data["date_from"]}_{data["date_to"]}.pdf"'
     )
+    resp["Cache-Control"] = "no-store, private"
     return resp
 
 
 @login_required
 @permission_required("transactions.view_transaction", raise_exception=True)
 def tx_preview(request, tx_id: int):
-    farm = _get_farm_for_user(request.user)
     tx = get_object_or_404(
-        Transaction.objects.select_related("counterparty").prefetch_related("lines"),
+        _transaction_qs_for_user(request.user)
+        .select_related("counterparty")
+        .prefetch_related("lines"),
         pk=tx_id,
-        farm=farm,
     )
+
     return render(
         request,
         "reports/tx_preview.html",
@@ -228,11 +305,11 @@ def tx_preview(request, tx_id: int):
 @login_required
 @permission_required("transactions.view_transaction", raise_exception=True)
 def tx_pdf(request, tx_id: int):
-    farm = _get_farm_for_user(request.user)
     tx = get_object_or_404(
-        Transaction.objects.select_related("counterparty").prefetch_related("lines"),
+        _transaction_qs_for_user(request.user)
+        .select_related("counterparty")
+        .prefetch_related("lines"),
         pk=tx_id,
-        farm=farm,
     )
 
     register_arabic_fonts()
@@ -240,6 +317,7 @@ def tx_pdf(request, tx_id: int):
     pdf = transaction_pdf_bytes(tx)
     resp = HttpResponse(pdf, content_type="application/pdf")
     resp["Content-Disposition"] = f'inline; filename="tx-{tx_id}.pdf"'
+    resp["Cache-Control"] = "no-store, private"
     return resp
 
 
@@ -276,12 +354,15 @@ def analytics(request):
     kind_map = dict(TransactionLine._meta.get_field("livestock_kind").choices)
     cls_map = dict(TransactionLine._meta.get_field("livestock_class").choices)
 
-    line_qs = TransactionLine.objects.filter(
-        transaction__farm=farm,
-        transaction__status=TransactionStatus.POSTED,
-        transaction__is_return=False,
-        transaction__date__range=[date_from, date_to],
-    )
+    if farm:
+        line_qs = TransactionLine.objects.filter(
+            transaction__farm=farm,
+            transaction__status=TransactionStatus.POSTED,
+            transaction__is_return=False,
+            transaction__date__range=[date_from, date_to],
+        )
+    else:
+        line_qs = TransactionLine.objects.none()
     grouped = (
         line_qs.values("livestock_kind", "livestock_class", "transaction__tx_type")
         .annotate(qty=Sum("quantity"), amt=Sum("amount"))
