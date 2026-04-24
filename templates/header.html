@@ -11,6 +11,26 @@
     border: 0;
   }
 
+  .navlink-form {
+    display: inline-flex;
+    margin: 0;
+  }
+
+  .navlink-button {
+    border: 1px solid transparent;
+    background: transparent;
+    cursor: pointer;
+    font: inherit;
+  }
+
+  .navlink-button:hover,
+  .navlink-button:focus-visible {
+    color: var(--text);
+    border-color: var(--line);
+    background: rgba(255,255,255,.04);
+    outline: none;
+  }
+
   .mobile-nav-toggle,
   .mobile-nav-close,
   .mobile-nav-backdrop {
@@ -106,7 +126,7 @@
       display: flex !important;
       flex-direction: column !important;
       align-items: stretch !important;
-      justify-content: flex-start;
+      justify-content: flex-start !important;
       gap: 10px !important;
       text-align: right;
       background: linear-gradient(180deg, #041327 0%, #0a1e43 100%);
@@ -162,7 +182,8 @@
       display: none !important;
     }
 
-    .topbar [data-drawer] .navlink.navlink-compact {
+    .topbar [data-drawer] .navlink.navlink-compact,
+    .topbar [data-drawer] .navlink-button.navlink-compact {
       display: flex !important;
       align-items: center;
       gap: 10px;
@@ -172,10 +193,14 @@
       text-decoration: none;
       background: rgba(255, 255, 255, 0.06);
       border: 1px solid rgba(255, 255, 255, 0.08);
+      color: inherit;
+      justify-content: flex-start;
     }
 
     .topbar [data-drawer] .navlink.navlink-compact:hover,
-    .topbar [data-drawer] .navlink.navlink-compact:focus-visible {
+    .topbar [data-drawer] .navlink.navlink-compact:focus-visible,
+    .topbar [data-drawer] .navlink-button.navlink-compact:hover,
+    .topbar [data-drawer] .navlink-button.navlink-compact:focus-visible {
       background: rgba(255, 255, 255, 0.10);
       outline: none;
     }
@@ -257,37 +282,60 @@
         <span class="navico">🏠</span> الرئيسية
       </a>
 
-      <span class="sep">|</span>
-
-      <a
-        href="/#purchase"
-        class="navlink navlink-compact"
-        data-open-panel="purchase"
-      >
-        <span class="navico plus">＋</span> الشراء
-      </a>
-
-      <span class="sep">|</span>
-
-      <a
-        href="/#sale"
-        class="navlink navlink-compact"
-        data-open-panel="sale"
-      >
-        <span class="navico minus">－</span> البيع
-      </a>
-
-      <span class="sep">|</span>
-
-      <a href="/reports/summary/" class="navlink navlink-compact">
-        <span class="navico">📄</span> التقارير
-      </a>
-
-      {% if user.is_superuser %}
+      {% if user.is_authenticated %}
         <span class="sep">|</span>
 
-        <a href="{% url 'admin:index' %}" class="navlink navlink-compact">
-          <span class="navico">⚙️</span> الإدارة
+        <a
+          href="/#purchase"
+          class="navlink navlink-compact"
+          data-open-panel="purchase"
+        >
+          <span class="navico plus">＋</span> الشراء
+        </a>
+
+        <span class="sep">|</span>
+
+        <a
+          href="/#sale"
+          class="navlink navlink-compact"
+          data-open-panel="sale"
+        >
+          <span class="navico minus">－</span> البيع
+        </a>
+
+        <span class="sep">|</span>
+
+        <a href="/reports/summary/" class="navlink navlink-compact">
+          <span class="navico">📄</span> التقارير
+        </a>
+
+        {% if user.is_superuser %}
+          <span class="sep">|</span>
+
+          <a href="{% url 'admin:index' %}" class="navlink navlink-compact">
+            <span class="navico">⚙️</span> الإدارة
+          </a>
+        {% endif %}
+
+        <span class="sep">|</span>
+
+        <form method="post" action="{% url 'logout' %}" class="navlink-form">
+          {% csrf_token %}
+          <button type="submit" class="navlink navlink-compact navlink-button">
+            <span class="navico">🚪</span> تسجيل الخروج
+          </button>
+        </form>
+      {% else %}
+        <span class="sep">|</span>
+
+        <a href="{% url 'login' %}" class="navlink navlink-compact">
+          <span class="navico">🔐</span> تسجيل الدخول
+        </a>
+
+        <span class="sep">|</span>
+
+        <a href="{% url 'register' %}" class="navlink navlink-compact">
+          <span class="navico">🆕</span> تسجيل حساب جديد
         </a>
       {% endif %}
     </nav>
@@ -312,7 +360,7 @@
   const closeBtn = root.querySelector("[data-nav-close]");
   const drawer = root.querySelector("[data-drawer]");
   const backdrop = document.querySelector("[data-nav-backdrop]");
-  const allNavLinks = root.querySelectorAll(".topnav .navlink");
+  const allNavLinks = root.querySelectorAll(".topnav .navlink, .topnav .navlink-button");
   const panelLinks = root.querySelectorAll("[data-open-panel]");
 
   function isMobile() {

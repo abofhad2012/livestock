@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <title>تسجيل حساب جديد</title>
+  <style>
+    body{
+      font-family:system-ui,Segoe UI,Arial;
+      margin:0;
+      background:#0b1220;
+      color:#eef4ff;
+    }
+
+    .wrap{
+      width:min(520px,92%);
+      margin:60px auto;
+      background:rgba(11,23,51,.72);
+      border:1px solid rgba(255,255,255,.10);
+      border-radius:16px;
+      padding:18px;
+    }
+
+    h2{margin-top:0}
+
+    label{
+      display:block;
+      margin:12px 0 6px;
+      color:rgba(238,244,255,.82);
+      font-weight:700;
+    }
+
+    input{
+      width:100%;
+      height:42px;
+      border-radius:10px;
+      border:1px solid rgba(255,255,255,.12);
+      padding:0 10px;
+      box-sizing:border-box;
+    }
+
+    .btn{
+      margin-top:16px;
+      width:100%;
+      height:44px;
+      border:0;
+      border-radius:10px;
+      background:#22c55e;
+      color:#07111f;
+      font-weight:900;
+      cursor:pointer;
+    }
+
+    .muted{
+      color:rgba(238,244,255,.72);
+      font-size:14px;
+      line-height:1.8;
+    }
+
+    a{
+      color:#7dd3fc;
+      text-decoration:none;
+    }
+
+    .errors{
+      background:rgba(239,68,68,.12);
+      border:1px solid rgba(239,68,68,.25);
+      color:#fecaca;
+      padding:10px;
+      border-radius:10px;
+      margin-bottom:12px;
+    }
+
+    ul.errorlist{
+      color:#fecaca;
+      margin:6px 0 0;
+      padding-right:18px;
+      line-height:1.7;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h2>تسجيل حساب جديد</h2>
+
+    <p class="muted">
+      سيتم إنشاء حساب خاص بك مع منشأة مستقلة، ولن تظهر لك لوحة الإدارة.
+    </p>
+
+    {% if form.errors %}
+      <div class="errors">
+        الرجاء مراجعة البيانات المدخلة.
+      </div>
+    {% endif %}
+
+    <form method="post">
+      {% csrf_token %}
+
+      <label>اسم المستخدم</label>
+      {{ form.username }}
+      {{ form.username.errors }}
+
+      <label>البريد الإلكتروني</label>
+      {{ form.email }}
+      {{ form.email.errors }}
+
+      <label>الاسم الكامل</label>
+      {{ form.full_name }}
+      {{ form.full_name.errors }}
+
+      <label>اسم المنشأة</label>
+      {{ form.farm_name }}
+      {{ form.farm_name.errors }}
+
+      <label>كلمة المرور</label>
+      {{ form.password1 }}
+      {{ form.password1.errors }}
+
+      <label>تأكيد كلمة المرور</label>
+      {{ form.password2 }}
+      {{ form.password2.errors }}
+
+      <button class="btn" type="submit">إنشاء الحساب</button>
+    </form>
+
+    <p class="muted" style="margin-top:16px">
+      لديك حساب؟
+      <a href="{% url 'login' %}">تسجيل الدخول</a>
+    </p>
+  </div>
+</body>
+</html>
