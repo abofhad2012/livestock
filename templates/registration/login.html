@@ -207,6 +207,21 @@
     {% else %}
       <h2 style="text-align:center">تسجيل الدخول</h2>
 
+      <div class="links">
+  <div>
+    ليس لديك حساب؟
+    <a href="{% url 'register' %}">تسجيل حساب جديد</a>
+  </div>
+
+  <div>
+    <a href="{% url 'password_reset' %}">نسيت كلمة المرور؟</a>
+  </div>
+
+  <div>
+    <a href="/">العودة إلى الرئيسية</a>
+  </div>
+</div>
+
       {% if form.errors %}
         <div class="error-box">
           اسم المستخدم أو كلمة المرور غير صحيحة.

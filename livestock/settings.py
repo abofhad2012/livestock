@@ -13,12 +13,18 @@ ON_RENDER = bool(os.getenv("RENDER_EXTERNAL_HOSTNAME"))
 
 DEBUG = os.getenv("DEBUG", "False" if ON_RENDER else "True").lower() == "true"
 
-SECRET_KEY = os.getenv("SECRET_KEY")
+# محليًا: نطبع رسائل البريد في الطرفية
+EMAIL_BACKEND = "django.core.mail.backends.console.EmailBackend"
+
+# اقبل المفتاح من DJANGO_SECRET_KEY أو SECRET_KEY
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY") or os.getenv("SECRET_KEY")
 if not SECRET_KEY:
     if DEBUG:
         SECRET_KEY = "dev-only-secret-key-change-me-dev-only-secret-key-change-me"
     else:
-        raise RuntimeError("SECRET_KEY environment variable is required when DEBUG=False")
+        raise RuntimeError(
+            "DJANGO_SECRET_KEY or SECRET_KEY environment variable is required when DEBUG=False"
+        )
 
 ALLOWED_HOSTS = [h.strip() for h in os.getenv("ALLOWED_HOSTS", "").split(",") if h.strip()]
 if DEBUG and not ALLOWED_HOSTS:
