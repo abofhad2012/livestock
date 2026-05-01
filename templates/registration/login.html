@@ -197,7 +197,7 @@
 
       <form method="post" action="{% url 'logout' %}">
         {% csrf_token %}
-        <button class="btn secondary" type="submit">تسجيل الخروج لتسجيل حساب جديد</button>
+        <button class="btn secondary" type="submit">تسجيل الخروج لتسجيل حساب آخر</button>
       </form>
 
       <div class="links">
@@ -206,21 +206,6 @@
 
     {% else %}
       <h2 style="text-align:center">تسجيل الدخول</h2>
-
-      <div class="links">
-  <div>
-    ليس لديك حساب؟
-    <a href="{% url 'register' %}">تسجيل حساب جديد</a>
-  </div>
-
-  <div>
-    <a href="{% url 'password_reset' %}">نسيت كلمة المرور؟</a>
-  </div>
-
-  <div>
-    <a href="/">العودة إلى الرئيسية</a>
-  </div>
-</div>
 
       {% if form.errors %}
         <div class="error-box">
@@ -251,7 +236,6 @@
           ليس لديك حساب؟
           <a href="{% url 'register' %}">تسجيل حساب جديد</a>
         </div>
-
         <div>
           <a href="/">العودة إلى الرئيسية</a>
         </div>
