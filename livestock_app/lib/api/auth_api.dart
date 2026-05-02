@@ -18,16 +18,45 @@ class AuthApi {
   Future<AuthResponse> login({
     required String username,
     required String password,
-  }) async {
+  }) {
+    return _postAuth(
+      '/api/auth/login/',
+      <String, String>{
+        'username': username,
+        'password': password,
+      },
+    );
+  }
+
+  Future<AuthResponse> register({
+    required String username,
+    required String password,
+    required String fullName,
+    required String phone,
+    required String farmName,
+  }) {
+    return _postAuth(
+      '/api/auth/register/',
+      <String, String>{
+        'username': username,
+        'password': password,
+        'full_name': fullName,
+        'phone': phone,
+        'farm_name': farmName,
+      },
+    );
+  }
+
+  Future<AuthResponse> _postAuth(
+    String path,
+    Map<String, String> payload,
+  ) async {
     final response = await http.post(
-      _uri('/api/auth/login/'),
+      _uri(path),
       headers: const <String, String>{
         'Content-Type': 'application/json; charset=UTF-8',
       },
-      body: jsonEncode(<String, String>{
-        'username': username,
-        'password': password,
-      }),
+      body: jsonEncode(payload),
     );
 
     final decoded = jsonDecode(utf8.decode(response.bodyBytes));
@@ -39,14 +68,15 @@ class AuthApi {
       );
     }
 
-    if (response.statusCode == 200 && decoded['ok'] == true) {
+    if ((response.statusCode == 200 || response.statusCode == 201) &&
+        decoded['ok'] == true) {
       return AuthResponse.fromJson(decoded);
     }
 
     final rawError = decoded['error'] ?? decoded['detail'] ?? decoded['errors'];
     final message = rawError is List
         ? rawError.join('\n')
-        : (rawError?.toString() ?? 'Login failed');
+        : (rawError?.toString() ?? 'Request failed');
 
     throw AuthApiException(message, statusCode: response.statusCode);
   }
