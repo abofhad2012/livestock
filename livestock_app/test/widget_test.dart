@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:livestock_app/api/auth_api.dart';
 import 'package:livestock_app/main.dart';
 
 void main() {
@@ -20,28 +21,34 @@ void main() {
 
     expect(find.text('تسجيل حساب جديد'), findsWidgets);
     expect(find.text('اسم المنشأة'), findsOneWidget);
+  });
 
-    final registerPageScrollable = find.descendant(
-      of: find.byType(RegisterPage),
-      matching: find.byWidgetPredicate(
-        (widget) =>
-            widget is Scrollable &&
-            widget.axisDirection == AxisDirection.down,
+  testWidgets('home screen renders current user and farm', (tester) async {
+    const auth = AuthResponse(
+      ok: true,
+      token: 'test-token',
+      user: <String, dynamic>{
+        'id': 1,
+        'username': 'owner1',
+        'full_name': 'مالك التجربة',
+      },
+      farm: <String, dynamic>{
+        'id': 1,
+        'name': 'منشأة التجربة',
+      },
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: HomePage(auth: auth),
       ),
     );
-    expect(registerPageScrollable, findsOneWidget);
 
-    final registerButton = find.widgetWithText(
-      FilledButton,
-      'إنشاء الحساب',
-    );
-
-    await tester.scrollUntilVisible(
-      registerButton,
-      200,
-      scrollable: registerPageScrollable,
-    );
-
-    expect(registerButton, findsOneWidget);
+    expect(find.text('الرئيسية'), findsOneWidget);
+    expect(find.text('مالك التجربة'), findsOneWidget);
+    expect(find.text('منشأة التجربة'), findsOneWidget);
+    expect(find.text('المخزون'), findsOneWidget);
+    expect(find.text('شراء'), findsOneWidget);
+    expect(find.text('بيع'), findsOneWidget);
   });
 }

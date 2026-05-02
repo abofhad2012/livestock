@@ -23,6 +23,16 @@ class LivestockApp extends StatelessWidget {
   }
 }
 
+void openHome(BuildContext context, AuthResponse auth) {
+  Navigator.pushAndRemoveUntil<void>(
+    context,
+    MaterialPageRoute<void>(
+      builder: (_) => HomePage(auth: auth),
+    ),
+    (Route<dynamic> route) => false,
+  );
+}
+
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -37,8 +47,7 @@ class _LoginPageState extends State<LoginPage> {
   final _passwordController = TextEditingController();
 
   bool _isLoading = false;
-  String? _resultMessage;
-  String? _tokenPreview;
+  String? _errorMessage;
 
   @override
   void dispose() {
@@ -54,8 +63,7 @@ class _LoginPageState extends State<LoginPage> {
 
     setState(() {
       _isLoading = true;
-      _resultMessage = null;
-      _tokenPreview = null;
+      _errorMessage = null;
     });
 
     try {
@@ -68,20 +76,14 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
-      final farmName = (response.farm?['name'] ?? 'بدون منشأة').toString();
-      final token = response.token;
-
-      setState(() {
-        _resultMessage = 'تم الدخول بنجاح. المنشأة: $farmName';
-        _tokenPreview = token.length > 8 ? '${token.substring(0, 8)}...' : token;
-      });
+      openHome(context, response);
     } on AuthApiException catch (error) {
       if (!mounted) {
         return;
       }
 
       setState(() {
-        _resultMessage = 'خطأ: ${error.message}';
+        _errorMessage = 'خطأ: ${error.message}';
       });
     } catch (error) {
       if (!mounted) {
@@ -89,7 +91,7 @@ class _LoginPageState extends State<LoginPage> {
       }
 
       setState(() {
-        _resultMessage = 'خطأ: $error';
+        _errorMessage = 'خطأ: $error';
       });
     } finally {
       if (mounted) {
@@ -188,12 +190,9 @@ class _LoginPageState extends State<LoginPage> {
                         onPressed: _isLoading ? null : _openRegister,
                         child: const Text('إنشاء حساب جديد'),
                       ),
-                      if (_resultMessage != null) ...[
+                      if (_errorMessage != null) ...[
                         const SizedBox(height: 24),
-                        ResultCard(
-                          message: _resultMessage!,
-                          tokenPreview: _tokenPreview,
-                        ),
+                        ErrorCard(message: _errorMessage!),
                       ],
                     ],
                   ),
@@ -225,8 +224,7 @@ class _RegisterPageState extends State<RegisterPage> {
   final _farmNameController = TextEditingController();
 
   bool _isLoading = false;
-  String? _resultMessage;
-  String? _tokenPreview;
+  String? _errorMessage;
 
   @override
   void dispose() {
@@ -245,8 +243,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
     setState(() {
       _isLoading = true;
-      _resultMessage = null;
-      _tokenPreview = null;
+      _errorMessage = null;
     });
 
     try {
@@ -262,20 +259,14 @@ class _RegisterPageState extends State<RegisterPage> {
         return;
       }
 
-      final farmName = (response.farm?['name'] ?? 'بدون منشأة').toString();
-      final token = response.token;
-
-      setState(() {
-        _resultMessage = 'تم إنشاء الحساب بنجاح. المنشأة: $farmName';
-        _tokenPreview = token.length > 8 ? '${token.substring(0, 8)}...' : token;
-      });
+      openHome(context, response);
     } on AuthApiException catch (error) {
       if (!mounted) {
         return;
       }
 
       setState(() {
-        _resultMessage = 'خطأ: ${error.message}';
+        _errorMessage = 'خطأ: ${error.message}';
       });
     } catch (error) {
       if (!mounted) {
@@ -283,7 +274,7 @@ class _RegisterPageState extends State<RegisterPage> {
       }
 
       setState(() {
-        _resultMessage = 'خطأ: $error';
+        _errorMessage = 'خطأ: $error';
       });
     } finally {
       if (mounted) {
@@ -416,12 +407,9 @@ class _RegisterPageState extends State<RegisterPage> {
                         onPressed: _isLoading ? null : () => Navigator.pop(context),
                         child: const Text('العودة لتسجيل الدخول'),
                       ),
-                      if (_resultMessage != null) ...[
+                      if (_errorMessage != null) ...[
                         const SizedBox(height: 24),
-                        ResultCard(
-                          message: _resultMessage!,
-                          tokenPreview: _tokenPreview,
-                        ),
+                        ErrorCard(message: _errorMessage!),
                       ],
                     ],
                   ),
@@ -435,31 +423,184 @@ class _RegisterPageState extends State<RegisterPage> {
   }
 }
 
-class ResultCard extends StatelessWidget {
-  const ResultCard({
+class HomePage extends StatelessWidget {
+  const HomePage({
+    super.key,
+    required this.auth,
+  });
+
+  final AuthResponse auth;
+
+  String get username {
+    final fullName = (auth.user['full_name'] ?? '').toString().trim();
+    if (fullName.isNotEmpty) {
+      return fullName;
+    }
+    return (auth.user['username'] ?? 'مستخدم').toString();
+  }
+
+  String get farmName {
+    return (auth.farm?['name'] ?? 'بدون منشأة').toString();
+  }
+
+  void _showComingSoon(BuildContext context, String featureName) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('سنربط هذه الشاشة لاحقًا: $featureName'),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final features = <HomeFeature>[
+      const HomeFeature(
+        title: 'المخزون',
+        subtitle: 'عرض مخزون المواشي',
+        icon: Icons.inventory_2_outlined,
+      ),
+      const HomeFeature(
+        title: 'شراء',
+        subtitle: 'تسجيل عملية شراء',
+        icon: Icons.add_shopping_cart,
+      ),
+      const HomeFeature(
+        title: 'بيع',
+        subtitle: 'تسجيل عملية بيع',
+        icon: Icons.point_of_sale,
+      ),
+    ];
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('الرئيسية'),
+        ),
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: ListView(
+                  children: <Widget>[
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: <Widget>[
+                            Text(
+                              'مرحبًا',
+                              style: Theme.of(context).textTheme.headlineSmall,
+                            ),
+                            const SizedBox(height: 16),
+                            InfoRow(label: 'المستخدم', value: username),
+                            const SizedBox(height: 8),
+                            InfoRow(label: 'المنشأة', value: farmName),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Text(
+                      'العمليات',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 12),
+                    for (final feature in features) ...[
+                      HomeFeatureCard(
+                        feature: feature,
+                        onPressed: () => _showComingSoon(context, feature.title),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class HomeFeature {
+  const HomeFeature({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+}
+
+class HomeFeatureCard extends StatelessWidget {
+  const HomeFeatureCard({
+    super.key,
+    required this.feature,
+    required this.onPressed,
+  });
+
+  final HomeFeature feature;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ListTile(
+        leading: Icon(feature.icon),
+        title: Text(feature.title),
+        subtitle: Text(feature.subtitle),
+        trailing: const Icon(Icons.chevron_left),
+        onTap: onPressed,
+      ),
+    );
+  }
+}
+
+class InfoRow extends StatelessWidget {
+  const InfoRow({
+    super.key,
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: <Widget>[
+        Text(
+          '$label: ',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        Expanded(child: Text(value)),
+      ],
+    );
+  }
+}
+
+class ErrorCard extends StatelessWidget {
+  const ErrorCard({
     super.key,
     required this.message,
-    this.tokenPreview,
   });
 
   final String message;
-  final String? tokenPreview;
 
   @override
   Widget build(BuildContext context) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: <Widget>[
-            Text(message),
-            if (tokenPreview != null) ...[
-              const SizedBox(height: 8),
-              Text('Token: $tokenPreview'),
-            ],
-          ],
-        ),
+        child: Text(message),
       ),
     );
   }
