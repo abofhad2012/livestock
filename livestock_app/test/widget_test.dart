@@ -51,4 +51,51 @@ void main() {
     expect(find.text('شراء'), findsOneWidget);
     expect(find.text('بيع'), findsOneWidget);
   });
+  testWidgets('stock content renders current farm and quantities', (tester) async {
+    const stock = StockResponse(
+      ok: true,
+      farm: <String, dynamic>{
+        'id': 1,
+        'name': 'منشأة المخزون',
+      },
+      items: <StockItem>[
+        StockItem(
+          kind: 'SHEEP',
+          kindLabel: 'غنم',
+          livestockClass: 'NONE',
+          classLabel: '?',
+          quantity: '7.00',
+        ),
+      ],
+      byKind: <StockKindSummary>[
+        StockKindSummary(
+          kind: 'SHEEP',
+          kindLabel: 'غنم',
+          total: '7.00',
+          classes: <StockClassQuantity>[
+            StockClassQuantity(
+              livestockClass: 'NONE',
+              classLabel: '?',
+              quantity: '7.00',
+            ),
+          ],
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Directionality(
+          textDirection: TextDirection.rtl,
+          child: StockContent(stock: stock),
+        ),
+      ),
+    );
+
+    expect(find.text('المخزون'), findsOneWidget);
+    expect(find.text('منشأة المخزون'), findsOneWidget);
+    expect(find.text('غنم'), findsOneWidget);
+    expect(find.text('الإجمالي: 7.00'), findsOneWidget);
+  });
+
 }

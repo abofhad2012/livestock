@@ -509,19 +509,215 @@ class HomePage extends StatelessWidget {
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const SizedBox(height: 12),
-                    for (final feature in features) ...[
-                      HomeFeatureCard(
-                        feature: feature,
-                        onPressed: () => _showComingSoon(context, feature.title),
-                      ),
-                      const SizedBox(height: 12),
-                    ],
+                    HomeFeatureCard(
+                      feature: features[0],
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => StockPage(auth: auth),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    HomeFeatureCard(
+                      feature: features[1],
+                      onPressed: () => _showComingSoon(context, features[1].title),
+                    ),
+                    const SizedBox(height: 12),
+                    HomeFeatureCard(
+                      feature: features[2],
+                      onPressed: () => _showComingSoon(context, features[2].title),
+                    ),
+                    const SizedBox(height: 12),
                   ],
                 ),
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class StockPage extends StatefulWidget {
+  const StockPage({
+    super.key,
+    required this.auth,
+  });
+
+  final AuthResponse auth;
+
+  @override
+  State<StockPage> createState() => _StockPageState();
+}
+
+class _StockPageState extends State<StockPage> {
+  final _api = const AuthApi();
+  late Future<StockResponse> _stockFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _stockFuture = _api.stock(token: widget.auth.token);
+  }
+
+  void _refresh() {
+    setState(() {
+      _stockFuture = _api.stock(token: widget.auth.token);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('المخزون'),
+          actions: <Widget>[
+            IconButton(
+              onPressed: _refresh,
+              icon: const Icon(Icons.refresh),
+              tooltip: 'تحديث',
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: FutureBuilder<StockResponse>(
+            future: _stockFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              if (snapshot.hasError) {
+                return Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 460),
+                    child: Padding(
+                      padding: const EdgeInsets.all(24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: <Widget>[
+                          ErrorCard(message: 'خطأ: ${snapshot.error}'),
+                          const SizedBox(height: 16),
+                          FilledButton(
+                            onPressed: _refresh,
+                            child: const Text('إعادة المحاولة'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
+              }
+
+              final stock = snapshot.data;
+              if (stock == null) {
+                return const Center(child: Text('لا توجد بيانات مخزون'));
+              }
+
+              return StockContent(stock: stock);
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class StockContent extends StatelessWidget {
+  const StockContent({
+    super.key,
+    required this.stock,
+  });
+
+  final StockResponse stock;
+
+  @override
+  Widget build(BuildContext context) {
+    final farmName = stock.farmName.isEmpty ? 'بدون منشأة' : stock.farmName;
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: ListView(
+            children: <Widget>[
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(
+                        'المخزون',
+                        style: Theme.of(context).textTheme.headlineSmall,
+                      ),
+                      const SizedBox(height: 16),
+                      InfoRow(label: 'المنشأة', value: farmName),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              if (stock.isEmpty)
+                const Card(
+                  child: Padding(
+                    padding: EdgeInsets.all(20),
+                    child: Text('لا يوجد مخزون حاليًا.'),
+                  ),
+                )
+              else ...[
+                Text(
+                  'المخزون حسب النوع',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 12),
+                for (final summary in stock.byKind) ...[
+                  StockSummaryCard(summary: summary),
+                  const SizedBox(height: 12),
+                ],
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class StockSummaryCard extends StatelessWidget {
+  const StockSummaryCard({
+    super.key,
+    required this.summary,
+  });
+
+  final StockKindSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: ExpansionTile(
+        leading: const Icon(Icons.inventory_2_outlined),
+        title: Text(summary.kindLabel),
+        subtitle: Text('الإجمالي: ${summary.total}'),
+        children: <Widget>[
+          if (summary.classes.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('لا توجد تفاصيل أصناف'),
+            )
+          else
+            for (final item in summary.classes)
+              ListTile(
+                title: Text(item.classLabel),
+                trailing: Text(item.quantity),
+              ),
+        ],
       ),
     );
   }
