@@ -68,6 +68,42 @@ class AuthApi {
     );
   }
 
+  Future<PurchaseResponse> purchase({
+    required String token,
+    required String kind,
+    required String livestockClass,
+    required String quantity,
+    required String unitPrice,
+    required String idempotencyKey,
+  }) async {
+    final response = await http.post(
+      _uri('/api/purchase/'),
+      headers: <String, String>{
+        'Content-Type': 'application/json; charset=UTF-8',
+        'Authorization': 'Token $token',
+      },
+      body: jsonEncode(<String, String>{
+        'kind': kind,
+        'livestock_class': livestockClass,
+        'quantity': quantity,
+        'unit_price': unitPrice,
+        'idempotency_key': idempotencyKey,
+      }),
+    );
+
+    final decoded = _decodeJson(response);
+
+    if ((response.statusCode == 200 || response.statusCode == 201) &&
+        decoded['ok'] == true) {
+      return PurchaseResponse.fromJson(decoded);
+    }
+
+    throw AuthApiException(
+      _errorMessage(decoded, fallback: 'Purchase request failed'),
+      statusCode: response.statusCode,
+    );
+  }
+
   Future<AuthResponse> _postAuth(
     String path,
     Map<String, String> payload,
@@ -141,6 +177,100 @@ class AuthResponse {
       farm: json['farm'] == null
           ? null
           : Map<String, dynamic>.from(json['farm'] as Map),
+    );
+  }
+}
+
+class PurchaseResponse {
+  const PurchaseResponse({
+    required this.ok,
+    required this.transaction,
+    required this.line,
+    required this.idempotent,
+  });
+
+  final bool ok;
+  final PurchaseTransaction transaction;
+  final PurchaseLine line;
+  final bool idempotent;
+
+  factory PurchaseResponse.fromJson(Map<String, dynamic> json) {
+    return PurchaseResponse(
+      ok: json['ok'] == true,
+      transaction: PurchaseTransaction.fromJson(
+        Map<String, dynamic>.from(json['transaction'] as Map),
+      ),
+      line: json['line'] == null
+          ? PurchaseLine.empty()
+          : PurchaseLine.fromJson(
+              Map<String, dynamic>.from(json['line'] as Map),
+            ),
+      idempotent: json['idempotent'] == true,
+    );
+  }
+}
+
+class PurchaseTransaction {
+  const PurchaseTransaction({
+    required this.id,
+    required this.reference,
+    required this.date,
+    required this.totalAmount,
+    required this.amountPaid,
+    required this.amountDue,
+  });
+
+  final int id;
+  final String reference;
+  final String date;
+  final String totalAmount;
+  final String amountPaid;
+  final String amountDue;
+
+  factory PurchaseTransaction.fromJson(Map<String, dynamic> json) {
+    return PurchaseTransaction(
+      id: int.tryParse((json['id'] ?? '0').toString()) ?? 0,
+      reference: (json['reference'] ?? '').toString(),
+      date: (json['date'] ?? '').toString(),
+      totalAmount: (json['total_amount'] ?? '0.00').toString(),
+      amountPaid: (json['amount_paid'] ?? '0.00').toString(),
+      amountDue: (json['amount_due'] ?? '0.00').toString(),
+    );
+  }
+}
+
+class PurchaseLine {
+  const PurchaseLine({
+    required this.kind,
+    required this.livestockClass,
+    required this.quantity,
+    required this.unitPrice,
+    required this.amount,
+  });
+
+  final String kind;
+  final String livestockClass;
+  final String quantity;
+  final String unitPrice;
+  final String amount;
+
+  factory PurchaseLine.fromJson(Map<String, dynamic> json) {
+    return PurchaseLine(
+      kind: (json['kind'] ?? '').toString(),
+      livestockClass: (json['livestock_class'] ?? '').toString(),
+      quantity: (json['quantity'] ?? '0.00').toString(),
+      unitPrice: (json['unit_price'] ?? '0.00').toString(),
+      amount: (json['amount'] ?? '0.00').toString(),
+    );
+  }
+
+  factory PurchaseLine.empty() {
+    return const PurchaseLine(
+      kind: '',
+      livestockClass: '',
+      quantity: '0.00',
+      unitPrice: '0.00',
+      amount: '0.00',
     );
   }
 }

@@ -4,6 +4,20 @@ import 'package:livestock_app/api/auth_api.dart';
 import 'package:livestock_app/main.dart';
 
 void main() {
+  const auth = AuthResponse(
+    ok: true,
+    token: 'test-token',
+    user: <String, dynamic>{
+      'id': 1,
+      'username': 'owner1',
+      'full_name': 'مالك التجربة',
+    },
+    farm: <String, dynamic>{
+      'id': 1,
+      'name': 'منشأة التجربة',
+    },
+  );
+
   testWidgets('login screen renders', (tester) async {
     await tester.pumpWidget(const LivestockApp());
 
@@ -24,20 +38,6 @@ void main() {
   });
 
   testWidgets('home screen renders current user and farm', (tester) async {
-    const auth = AuthResponse(
-      ok: true,
-      token: 'test-token',
-      user: <String, dynamic>{
-        'id': 1,
-        'username': 'owner1',
-        'full_name': 'مالك التجربة',
-      },
-      farm: <String, dynamic>{
-        'id': 1,
-        'name': 'منشأة التجربة',
-      },
-    );
-
     await tester.pumpWidget(
       const MaterialApp(
         home: HomePage(auth: auth),
@@ -51,8 +51,9 @@ void main() {
     expect(find.text('شراء'), findsOneWidget);
     expect(find.text('بيع'), findsOneWidget);
   });
+
   testWidgets('stock content renders current farm and quantities', (tester) async {
-    const stock = StockResponse(
+    const stockData = StockResponse(
       ok: true,
       farm: <String, dynamic>{
         'id': 1,
@@ -87,7 +88,7 @@ void main() {
       const MaterialApp(
         home: Directionality(
           textDirection: TextDirection.rtl,
-          child: StockContent(stock: stock),
+          child: StockContent(stock: stockData),
         ),
       ),
     );
@@ -98,4 +99,19 @@ void main() {
     expect(find.text('الإجمالي: 7.00'), findsOneWidget);
   });
 
+  testWidgets('purchase screen opens from home', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: HomePage(auth: auth),
+      ),
+    );
+
+    await tester.tap(find.text('شراء'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('تسجيل شراء'), findsWidgets);
+    expect(find.text('نوع المواشي'), findsOneWidget);
+    expect(find.text('الكمية'), findsOneWidget);
+    expect(find.text('سعر الوحدة'), findsOneWidget);
+  });
 }
