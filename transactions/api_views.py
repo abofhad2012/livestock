@@ -26,6 +26,7 @@ from transactions.models import (
 
 
 DEFAULT_PURCHASE_REFERENCE_PREFIX = "PO"
+DEFAULT_SALE_REFERENCE_PREFIX = "SO"
 
 
 def _get_farm_for_user(user):
@@ -86,7 +87,7 @@ def _make_reference(prefix, tx_date, tx_id):
     return f"{prefix}-{tx_date:%Y%m%d}-{tx_id:06d}"
 
 
-def _stock_payload_for_farm(farm):
+def _stock_map_for_farm(farm):
     rows = (
         TransactionLine.objects
         .filter(
@@ -124,6 +125,11 @@ def _stock_payload_for_farm(farm):
 
         stock_map[key] = stock_map.get(key, Decimal("0")) + (sign * qty)
 
+    return stock_map
+
+
+def _stock_payload_for_farm(farm):
+    stock_map = _stock_map_for_farm(farm)
     kind_labels = dict(LivestockKind.choices)
     class_labels = dict(LivestockClass.choices)
 
@@ -179,6 +185,82 @@ def _stock_payload_for_farm(farm):
         "items": items,
         "by_kind": by_kind_payload,
     }
+
+
+def _available_quantity(farm, kind, livestock_class):
+    return _stock_map_for_farm(farm).get((kind, livestock_class), Decimal("0"))
+
+
+def _transaction_payload(tx):
+    return {
+        "id": tx.id,
+        "reference": tx.reference,
+        "date": str(tx.date),
+        "total_amount": _decimal_payload(tx.total_amount),
+        "amount_paid": _decimal_payload(tx.amount_paid),
+        "amount_due": _decimal_payload(tx.amount_due),
+    }
+
+
+def _line_payload(line):
+    if not line:
+        return {
+            "kind": "",
+            "livestock_class": "",
+            "quantity": "0.00",
+            "unit_price": "0.00",
+            "amount": "0.00",
+        }
+
+    return {
+        "kind": line.livestock_kind,
+        "livestock_class": line.livestock_class,
+        "quantity": _decimal_payload(line.quantity),
+        "unit_price": _decimal_payload(line.unit_price),
+        "amount": _decimal_payload(line.amount),
+    }
+
+
+def _transaction_response(tx, *, idempotent):
+    line = tx.lines.first()
+
+    return {
+        "ok": True,
+        "transaction": _transaction_payload(tx),
+        "line": _line_payload(line),
+        "idempotent": idempotent,
+    }
+
+
+def _validate_kind_and_class(kind, livestock_class):
+    if kind not in LivestockKind.values:
+        return None, None, "kind is required"
+
+    if _is_tlyan(kind) and livestock_class not in {
+        LivestockClass.JADH,
+        LivestockClass.THANI,
+    }:
+        return None, None, "livestock_class is required for this kind"
+
+    return kind, _normalize_livestock_class(kind, livestock_class), None
+
+
+def _existing_idempotent_transaction(farm, idempotency_key, expected_type):
+    if not idempotency_key:
+        return None, None
+
+    existing = Transaction.objects.filter(
+        farm=farm,
+        idempotency_key=idempotency_key,
+    ).first()
+
+    if not existing:
+        return None, None
+
+    if existing.tx_type != expected_type:
+        return existing, "idempotency key already used for another transaction type"
+
+    return existing, None
 
 
 @api_view(["GET"])
@@ -239,22 +321,12 @@ def purchase(request):
     ).strip()
     idempotency_key = str(data.get("idempotency_key") or "").strip() or None
 
-    if kind not in LivestockKind.values:
+    kind, livestock_class, error = _validate_kind_and_class(kind, livestock_class)
+    if error:
         return Response(
-            {"ok": False, "error": "kind is required"},
+            {"ok": False, "error": error},
             status=status.HTTP_400_BAD_REQUEST,
         )
-
-    if _is_tlyan(kind) and livestock_class not in {
-        LivestockClass.JADH,
-        LivestockClass.THANI,
-    }:
-        return Response(
-            {"ok": False, "error": "livestock_class is required for this kind"},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
-
-    livestock_class = _normalize_livestock_class(kind, livestock_class)
 
     try:
         quantity = _parse_decimal(data.get("quantity"), "quantity")
@@ -265,28 +337,21 @@ def purchase(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    if idempotency_key:
-        existing = Transaction.objects.filter(
-            farm=farm,
-            idempotency_key=idempotency_key,
-        ).first()
-
-        if existing:
-            return Response(
-                {
-                    "ok": True,
-                    "transaction": {
-                        "id": existing.id,
-                        "reference": existing.reference,
-                        "date": str(existing.date),
-                        "total_amount": _decimal_payload(existing.total_amount),
-                        "amount_paid": _decimal_payload(existing.amount_paid),
-                        "amount_due": _decimal_payload(existing.amount_due),
-                    },
-                    "idempotent": True,
-                },
-                status=status.HTTP_200_OK,
-            )
+    existing, idem_error = _existing_idempotent_transaction(
+        farm,
+        idempotency_key,
+        TransactionType.PURCHASE,
+    )
+    if idem_error:
+        return Response(
+            {"ok": False, "error": idem_error},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if existing:
+        return Response(
+            _transaction_response(existing, idempotent=True),
+            status=status.HTTP_200_OK,
+        )
 
     today = timezone.localdate()
     total = (quantity * unit_price).quantize(Decimal("0.01"))
@@ -334,24 +399,125 @@ def purchase(request):
         tx.refresh_from_db()
 
     return Response(
-        {
-            "ok": True,
-            "transaction": {
-                "id": tx.id,
-                "reference": tx.reference,
-                "date": str(tx.date),
-                "total_amount": _decimal_payload(tx.total_amount),
-                "amount_paid": _decimal_payload(tx.amount_paid),
-                "amount_due": _decimal_payload(tx.amount_due),
+        _transaction_response(tx, idempotent=False),
+        status=status.HTTP_201_CREATED,
+    )
+
+
+@api_view(["POST"])
+@authentication_classes([TokenAuthentication])
+@permission_classes([IsAuthenticated])
+def sale(request):
+    if not request.user.has_perm("transactions.add_transaction"):
+        return Response(
+            {"ok": False, "error": "permission denied"},
+            status=status.HTTP_403_FORBIDDEN,
+        )
+
+    farm = _get_farm_for_user(request.user)
+    if not farm:
+        return Response(
+            {"ok": False, "error": "farm is required"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    data = request.data
+
+    kind = str(data.get("kind") or "").strip()
+    livestock_class = str(
+        data.get("livestock_class") or data.get("cls") or LivestockClass.NONE
+    ).strip()
+    idempotency_key = str(data.get("idempotency_key") or "").strip() or None
+
+    kind, livestock_class, error = _validate_kind_and_class(kind, livestock_class)
+    if error:
+        return Response(
+            {"ok": False, "error": error},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    try:
+        quantity = _parse_decimal(data.get("quantity"), "quantity")
+        unit_price = _parse_decimal(data.get("unit_price"), "unit_price")
+    except ValueError as exc:
+        return Response(
+            {"ok": False, "error": str(exc)},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    existing, idem_error = _existing_idempotent_transaction(
+        farm,
+        idempotency_key,
+        TransactionType.SALE,
+    )
+    if idem_error:
+        return Response(
+            {"ok": False, "error": idem_error},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+    if existing:
+        return Response(
+            _transaction_response(existing, idempotent=True),
+            status=status.HTTP_200_OK,
+        )
+
+    available = _available_quantity(farm, kind, livestock_class)
+    if quantity > available:
+        return Response(
+            {
+                "ok": False,
+                "error": "insufficient stock",
+                "available": _decimal_payload(available),
             },
-            "line": {
-                "kind": kind,
-                "livestock_class": livestock_class,
-                "quantity": _decimal_payload(quantity),
-                "unit_price": _decimal_payload(unit_price),
-                "amount": _decimal_payload(total),
-            },
-            "idempotent": False,
-        },
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
+    today = timezone.localdate()
+    total = (quantity * unit_price).quantize(Decimal("0.01"))
+
+    with db_transaction.atomic():
+        tx = Transaction.objects.create(
+            farm=farm,
+            created_by=request.user,
+            tx_type=TransactionType.SALE,
+            status=TransactionStatus.POSTED,
+            date=today,
+            reference="",
+            idempotency_key=idempotency_key,
+            is_return=False,
+            payment_mode=PaymentMode.PAID,
+            amount_paid=Decimal("0.00"),
+            amount_due=total,
+            total_amount=Decimal("0.00"),
+        )
+
+        TransactionLine.objects.create(
+            transaction=tx,
+            line_type=LineType.ANIMAL,
+            livestock_kind=kind,
+            livestock_class=livestock_class,
+            quantity=quantity,
+            unit_price=unit_price,
+        )
+
+        Payment.objects.create(
+            transaction=tx,
+            date=today,
+            amount=total,
+            method=PaymentMethod.CASH,
+            created_by=request.user,
+        )
+
+        tx.reference = _make_reference(
+            DEFAULT_SALE_REFERENCE_PREFIX,
+            today,
+            tx.id,
+        )
+        tx.save(update_fields=["reference"])
+
+        tx.refresh_from_db()
+
+    return Response(
+        _transaction_response(tx, idempotent=False),
         status=status.HTTP_201_CREATED,
     )
