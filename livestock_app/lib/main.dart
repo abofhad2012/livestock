@@ -443,14 +443,6 @@ class HomePage extends StatelessWidget {
     return (auth.farm?['name'] ?? 'بدون منشأة').toString();
   }
 
-  void _showComingSoon(BuildContext context, String featureName) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('سنربط هذه الشاشة لاحقًا: $featureName'),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final features = <HomeFeature>[
@@ -533,7 +525,13 @@ class HomePage extends StatelessWidget {
                     const SizedBox(height: 12),
                     HomeFeatureCard(
                       feature: features[2],
-                      onPressed: () => _showComingSoon(context, features[2].title),
+                      onPressed: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => SalePage(auth: auth),
+                          ),
+                        );
+                      },
                     ),
                     const SizedBox(height: 12),
                   ],
@@ -541,6 +539,338 @@ class HomePage extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class SalePage extends StatefulWidget {
+  const SalePage({
+    super.key,
+    required this.auth,
+  });
+
+  final AuthResponse auth;
+
+  @override
+  State<SalePage> createState() => _SalePageState();
+}
+
+class _SalePageState extends State<SalePage> {
+  final _api = const AuthApi();
+  final _formKey = GlobalKey<FormState>();
+
+  final _quantityController = TextEditingController(text: '1.00');
+  final _unitPriceController = TextEditingController();
+
+  String _kind = 'SHEEP';
+  String _livestockClass = 'NONE';
+  bool _isLoading = false;
+  String? _errorMessage;
+  PurchaseResponse? _saleResponse;
+
+  static const _kindOptions = <_ChoiceItem>[
+    _ChoiceItem(code: 'SHEEP', label: 'غنم'),
+    _ChoiceItem(code: 'GOAT', label: 'ماعز'),
+    _ChoiceItem(code: 'HARRI', label: 'طليان حري'),
+    _ChoiceItem(code: 'SAWAKNI', label: 'طليان سواكني'),
+    _ChoiceItem(code: 'NAIMI', label: 'طليان نعيمي'),
+    _ChoiceItem(code: 'CAMEL', label: 'إبل'),
+    _ChoiceItem(code: 'COW', label: 'بقر'),
+  ];
+
+  static const _classOptions = <_ChoiceItem>[
+    _ChoiceItem(code: 'JADH', label: 'جذع'),
+    _ChoiceItem(code: 'THANI', label: 'ثني'),
+  ];
+
+  bool get _requiresClass {
+    return _requiresClassFor(_kind);
+  }
+
+  bool _requiresClassFor(String kind) {
+    return kind == 'HARRI' || kind == 'SAWAKNI' || kind == 'NAIMI';
+  }
+
+  @override
+  void dispose() {
+    _quantityController.dispose();
+    _unitPriceController.dispose();
+    super.dispose();
+  }
+
+  void _onKindChanged(String? value) {
+    if (value == null) {
+      return;
+    }
+
+    setState(() {
+      _kind = value;
+      _livestockClass = _requiresClassFor(value) ? 'JADH' : 'NONE';
+      _errorMessage = null;
+      _saleResponse = null;
+    });
+  }
+
+  String? _required(String? value, String message) {
+    if (value == null || value.trim().isEmpty) {
+      return message;
+    }
+    return null;
+  }
+
+  String? _positiveDecimal(String? value, String requiredMessage) {
+    final requiredError = _required(value, requiredMessage);
+    if (requiredError != null) {
+      return requiredError;
+    }
+
+    final normalized = value!.trim().replaceAll(',', '.');
+    final parsed = double.tryParse(normalized);
+
+    if (parsed == null || parsed <= 0) {
+      return 'الرقم يجب أن يكون أكبر من صفر';
+    }
+
+    return null;
+  }
+
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+      _saleResponse = null;
+    });
+
+    try {
+      final response = await _api.sale(
+        token: widget.auth.token,
+        kind: _kind,
+        livestockClass: _livestockClass,
+        quantity: _quantityController.text.trim().replaceAll(',', '.'),
+        unitPrice: _unitPriceController.text.trim().replaceAll(',', '.'),
+        idempotencyKey: 'flutter-sale-${DateTime.now().millisecondsSinceEpoch}',
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _saleResponse = response;
+      });
+    } on AuthApiException catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _errorMessage = 'خطأ: ${error.message}';
+      });
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _errorMessage = 'خطأ: $error';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  void _openStock() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => StockPage(auth: widget.auth),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final response = _saleResponse;
+
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('تسجيل بيع'),
+        ),
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 520),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Form(
+                  key: _formKey,
+                  child: ListView(
+                    children: <Widget>[
+                      Text(
+                        'تسجيل بيع',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.headlineSmall,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'الخادم: ${AuthApi.baseUrl}',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: 32),
+                      DropdownButtonFormField<String>(
+                        initialValue: _kind,
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          labelText: 'نوع المواشي',
+                        ),
+                        items: _kindOptions
+                            .map(
+                              (option) => DropdownMenuItem<String>(
+                                value: option.code,
+                                child: Text(option.label),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: _isLoading ? null : _onKindChanged,
+                      ),
+                      if (_requiresClass) ...[
+                        const SizedBox(height: 16),
+                        DropdownButtonFormField<String>(
+                          initialValue: _livestockClass,
+                          decoration: const InputDecoration(
+                            border: OutlineInputBorder(),
+                            labelText: 'الصنف',
+                          ),
+                          items: _classOptions
+                              .map(
+                                (option) => DropdownMenuItem<String>(
+                                  value: option.code,
+                                  child: Text(option.label),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: _isLoading
+                              ? null
+                              : (value) {
+                                  if (value == null) {
+                                    return;
+                                  }
+                                  setState(() {
+                                    _livestockClass = value;
+                                    _errorMessage = null;
+                                    _saleResponse = null;
+                                  });
+                                },
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _quantityController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        textInputAction: TextInputAction.next,
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          labelText: 'الكمية',
+                        ),
+                        validator: (value) => _positiveDecimal(
+                          value,
+                          'اكتب الكمية',
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      TextFormField(
+                        controller: _unitPriceController,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          labelText: 'سعر الوحدة',
+                        ),
+                        validator: (value) => _positiveDecimal(
+                          value,
+                          'اكتب سعر الوحدة',
+                        ),
+                        onFieldSubmitted: (_) => _submit(),
+                      ),
+                      const SizedBox(height: 24),
+                      FilledButton(
+                        onPressed: _isLoading || _saleResponse != null ? null : _submit,
+                        child: _isLoading
+                            ? const SizedBox(
+                                width: 22,
+                                height: 22,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              )
+                            : const Text('حفظ البيع'),
+                      ),
+                      if (_errorMessage != null) ...[
+                        const SizedBox(height: 24),
+                        ErrorCard(message: _errorMessage!),
+                      ],
+                      if (response != null) ...[
+                        const SizedBox(height: 24),
+                        SaleSuccessCard(
+                          response: response,
+                          onOpenStock: _openStock,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class SaleSuccessCard extends StatelessWidget {
+  const SaleSuccessCard({
+    super.key,
+    required this.response,
+    required this.onOpenStock,
+  });
+
+  final PurchaseResponse response;
+  final VoidCallback onOpenStock;
+
+  @override
+  Widget build(BuildContext context) {
+    final transaction = response.transaction;
+    final line = response.line;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            const Text('تم تسجيل البيع بنجاح.'),
+            const SizedBox(height: 12),
+            InfoRow(label: 'المرجع', value: transaction.reference),
+            const SizedBox(height: 8),
+            InfoRow(label: 'الكمية', value: line.quantity),
+            const SizedBox(height: 8),
+            InfoRow(label: 'الإجمالي', value: transaction.totalAmount),
+            const SizedBox(height: 16),
+            OutlinedButton(
+              onPressed: onOpenStock,
+              child: const Text('عرض المخزون'),
+            ),
+          ],
         ),
       ),
     );
@@ -807,7 +1137,7 @@ class _PurchasePageState extends State<PurchasePage> {
                       ),
                       const SizedBox(height: 24),
                       FilledButton(
-                        onPressed: _isLoading ? null : _submit,
+                        onPressed: _isLoading || _purchaseResponse != null ? null : _submit,
                         child: _isLoading
                             ? const SizedBox(
                                 width: 22,

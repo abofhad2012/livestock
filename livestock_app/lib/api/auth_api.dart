@@ -104,6 +104,42 @@ class AuthApi {
     );
   }
 
+  Future<PurchaseResponse> sale({
+    required String token,
+    required String kind,
+    required String livestockClass,
+    required String quantity,
+    required String unitPrice,
+    required String idempotencyKey,
+  }) async {
+    final response = await http.post(
+      _uri('/api/sale/'),
+      headers: <String, String>{
+        'Content-Type': 'application/json; charset=UTF-8',
+        'Authorization': 'Token $token',
+      },
+      body: jsonEncode(<String, String>{
+        'kind': kind,
+        'livestock_class': livestockClass,
+        'quantity': quantity,
+        'unit_price': unitPrice,
+        'idempotency_key': idempotencyKey,
+      }),
+    );
+
+    final decoded = _decodeJson(response);
+
+    if ((response.statusCode == 200 || response.statusCode == 201) &&
+        decoded['ok'] == true) {
+      return PurchaseResponse.fromJson(decoded);
+    }
+
+    throw AuthApiException(
+      _errorMessage(decoded, fallback: 'Sale request failed'),
+      statusCode: response.statusCode,
+    );
+  }
+
   Future<AuthResponse> _postAuth(
     String path,
     Map<String, String> payload,

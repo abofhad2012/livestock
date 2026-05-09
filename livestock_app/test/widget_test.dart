@@ -114,4 +114,20 @@ void main() {
     expect(find.text('الكمية'), findsOneWidget);
     expect(find.text('سعر الوحدة'), findsOneWidget);
   });
+
+  testWidgets('sale screen opens from home', (tester) async {
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: HomePage(auth: auth),
+      ),
+    );
+
+    await tester.tap(find.text('بيع'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('تسجيل بيع'), findsWidgets);
+    expect(find.text('نوع المواشي'), findsOneWidget);
+    expect(find.text('الكمية'), findsOneWidget);
+    expect(find.text('سعر الوحدة'), findsOneWidget);
+  });
 }
