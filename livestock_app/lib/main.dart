@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import 'api/auth_api.dart';
+import 'auth/token_store.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const LivestockApp());
 }
 
@@ -18,7 +20,7 @@ class LivestockApp extends StatelessWidget {
         useMaterial3: true,
         colorSchemeSeed: Colors.green,
       ),
-      home: const LoginPage(),
+      home: const AuthGate(),
     );
   }
 }
@@ -33,6 +35,64 @@ void openHome(BuildContext context, AuthResponse auth) {
   );
 }
 
+class AuthGate extends StatefulWidget {
+  const AuthGate({super.key});
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  final _api = const AuthApi();
+  final _tokenStore = const TokenStore();
+
+  late Future<AuthResponse?> _sessionFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _sessionFuture = _restoreSession();
+  }
+
+  Future<AuthResponse?> _restoreSession() async {
+    final token = await _tokenStore.readToken();
+    if (token == null || token.isEmpty) {
+      return null;
+    }
+
+    try {
+      return await _api.me(token: token);
+    } catch (_) {
+      await _tokenStore.clearToken();
+      return null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<AuthResponse?>(
+      future: _sessionFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Directionality(
+            textDirection: TextDirection.rtl,
+            child: Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            ),
+          );
+        }
+
+        final auth = snapshot.data;
+        if (auth == null) {
+          return const LoginPage();
+        }
+
+        return HomePage(auth: auth);
+      },
+    );
+  }
+}
+
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -42,6 +102,7 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final _api = const AuthApi();
+  final _tokenStore = const TokenStore();
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
@@ -71,6 +132,8 @@ class _LoginPageState extends State<LoginPage> {
         username: _usernameController.text.trim(),
         password: _passwordController.text,
       );
+
+      await _tokenStore.saveToken(response.token);
 
       if (!mounted) {
         return;
@@ -215,6 +278,7 @@ class RegisterPage extends StatefulWidget {
 
 class _RegisterPageState extends State<RegisterPage> {
   final _api = const AuthApi();
+  final _tokenStore = const TokenStore();
   final _formKey = GlobalKey<FormState>();
 
   final _usernameController = TextEditingController();
@@ -254,6 +318,8 @@ class _RegisterPageState extends State<RegisterPage> {
         phone: _phoneController.text.trim(),
         farmName: _farmNameController.text.trim(),
       );
+
+      await _tokenStore.saveToken(response.token);
 
       if (!mounted) {
         return;
@@ -443,6 +509,32 @@ class HomePage extends StatelessWidget {
     return (auth.farm?['name'] ?? 'بدون منشأة').toString();
   }
 
+  Future<void> _logout(BuildContext context) async {
+    final token = auth.token;
+    final tokenStore = const TokenStore();
+    final api = const AuthApi();
+
+    try {
+      await api.logout(token: token);
+    } catch (_) {
+      // Local logout still matters even if the server token was already gone.
+    } finally {
+      await tokenStore.clearToken();
+    }
+
+    if (!context.mounted) {
+      return;
+    }
+
+    Navigator.pushAndRemoveUntil<void>(
+      context,
+      MaterialPageRoute<void>(
+        builder: (_) => const LoginPage(),
+      ),
+      (Route<dynamic> route) => false,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final features = <HomeFeature>[
@@ -468,6 +560,13 @@ class HomePage extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(
           title: const Text('الرئيسية'),
+          actions: <Widget>[
+            TextButton.icon(
+              onPressed: () => _logout(context),
+              icon: const Icon(Icons.logout),
+              label: const Text('خروج'),
+            ),
+          ],
         ),
         body: SafeArea(
           child: Center(

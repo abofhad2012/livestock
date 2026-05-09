@@ -19,7 +19,11 @@ void main() {
   );
 
   testWidgets('login screen renders', (tester) async {
-    await tester.pumpWidget(const LivestockApp());
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: LoginPage(),
+      ),
+    );
 
     expect(find.text('تسجيل الدخول'), findsOneWidget);
     expect(find.text('اسم المستخدم'), findsOneWidget);
@@ -28,7 +32,11 @@ void main() {
   });
 
   testWidgets('register screen opens', (tester) async {
-    await tester.pumpWidget(const LivestockApp());
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: LoginPage(),
+      ),
+    );
 
     await tester.tap(find.text('إنشاء حساب جديد'));
     await tester.pumpAndSettle();
@@ -50,6 +58,7 @@ void main() {
     expect(find.text('المخزون'), findsOneWidget);
     expect(find.text('شراء'), findsOneWidget);
     expect(find.text('بيع'), findsOneWidget);
+    expect(find.text('خروج'), findsOneWidget);
   });
 
   testWidgets('stock content renders current farm and quantities', (tester) async {

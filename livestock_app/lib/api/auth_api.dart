@@ -140,6 +140,58 @@ class AuthApi {
     );
   }
 
+  Future<AuthResponse> me({required String token}) async {
+    final response = await http.get(
+      _uri('/api/auth/me/'),
+      headers: <String, String>{
+        'Accept': 'application/json',
+        'Authorization': 'Token $token',
+      },
+    );
+
+    final decoded = _decodeJson(response);
+
+    if (response.statusCode == 200 && decoded['ok'] == true) {
+      final current = AuthResponse.fromJson(decoded);
+      return AuthResponse(
+        ok: current.ok,
+        token: token,
+        user: current.user,
+        farm: current.farm,
+      );
+    }
+
+    throw AuthApiException(
+      _errorMessage(decoded, fallback: 'Session restore failed'),
+      statusCode: response.statusCode,
+    );
+  }
+
+  Future<void> logout({required String token}) async {
+    if (token.isEmpty) {
+      return;
+    }
+
+    final response = await http.post(
+      _uri('/api/auth/logout/'),
+      headers: <String, String>{
+        'Accept': 'application/json',
+        'Authorization': 'Token $token',
+      },
+    );
+
+    final decoded = _decodeJson(response);
+
+    if (response.statusCode == 200 && decoded['ok'] == true) {
+      return;
+    }
+
+    throw AuthApiException(
+      _errorMessage(decoded, fallback: 'Logout failed'),
+      statusCode: response.statusCode,
+    );
+  }
+
   Future<AuthResponse> _postAuth(
     String path,
     Map<String, String> payload,
