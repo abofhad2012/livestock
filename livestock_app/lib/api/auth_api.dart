@@ -192,6 +192,29 @@ class AuthApi {
     );
   }
 
+  Future<ReportsSummaryResponse> reportsSummary({
+    required String token,
+  }) async {
+    final response = await http.get(
+      _uri('/api/reports/summary/'),
+      headers: <String, String>{
+        'Accept': 'application/json',
+        'Authorization': 'Token $token',
+      },
+    );
+
+    final decoded = _decodeJson(response);
+
+    if (response.statusCode == 200 && decoded['ok'] == true) {
+      return ReportsSummaryResponse.fromJson(decoded);
+    }
+
+    throw AuthApiException(
+      _errorMessage(decoded, fallback: 'Reports summary request failed'),
+      statusCode: response.statusCode,
+    );
+  }
+
   Future<AuthResponse> _postAuth(
     String path,
     Map<String, String> payload,
@@ -485,6 +508,133 @@ class StockClassQuantity {
       livestockClass: (json['livestock_class'] ?? '').toString(),
       classLabel: (json['class_label'] ?? '').toString(),
       quantity: (json['quantity'] ?? '0.00').toString(),
+    );
+  }
+}
+
+class ReportsSummaryResponse {
+  const ReportsSummaryResponse({
+    required this.ok,
+    required this.farm,
+    required this.period,
+    required this.totals,
+    required this.recentTransactions,
+  });
+
+  final bool ok;
+  final Map<String, dynamic>? farm;
+  final ReportPeriod period;
+  final ReportTotals totals;
+  final List<ReportRecentTransaction> recentTransactions;
+
+  String get farmName {
+    return (farm?['name'] ?? '').toString();
+  }
+
+  factory ReportsSummaryResponse.fromJson(Map<String, dynamic> json) {
+    final rawFarm = json['farm'];
+    final rawRecentTransactions = json['recent_transactions'];
+
+    return ReportsSummaryResponse(
+      ok: json['ok'] == true,
+      farm: rawFarm is Map ? Map<String, dynamic>.from(rawFarm) : null,
+      period: ReportPeriod.fromJson(
+        Map<String, dynamic>.from(json['period'] as Map),
+      ),
+      totals: ReportTotals.fromJson(
+        Map<String, dynamic>.from(json['totals'] as Map),
+      ),
+      recentTransactions: rawRecentTransactions is List
+          ? rawRecentTransactions
+              .map(
+                (item) => ReportRecentTransaction.fromJson(
+                  Map<String, dynamic>.from(item as Map),
+                ),
+              )
+              .toList()
+          : const <ReportRecentTransaction>[],
+    );
+  }
+}
+
+class ReportPeriod {
+  const ReportPeriod({
+    required this.from,
+    required this.to,
+  });
+
+  final String from;
+  final String to;
+
+  factory ReportPeriod.fromJson(Map<String, dynamic> json) {
+    return ReportPeriod(
+      from: (json['from'] ?? '').toString(),
+      to: (json['to'] ?? '').toString(),
+    );
+  }
+}
+
+class ReportTotals {
+  const ReportTotals({
+    required this.currentStockQuantity,
+    required this.purchasesCount,
+    required this.salesCount,
+    required this.purchasesTotal,
+    required this.salesTotal,
+    required this.netSalesMinusPurchases,
+  });
+
+  final String currentStockQuantity;
+  final int purchasesCount;
+  final int salesCount;
+  final String purchasesTotal;
+  final String salesTotal;
+  final String netSalesMinusPurchases;
+
+  factory ReportTotals.fromJson(Map<String, dynamic> json) {
+    return ReportTotals(
+      currentStockQuantity: (json['current_stock_quantity'] ?? '0.00').toString(),
+      purchasesCount: int.tryParse((json['purchases_count'] ?? '0').toString()) ?? 0,
+      salesCount: int.tryParse((json['sales_count'] ?? '0').toString()) ?? 0,
+      purchasesTotal: (json['purchases_total'] ?? '0.00').toString(),
+      salesTotal: (json['sales_total'] ?? '0.00').toString(),
+      netSalesMinusPurchases:
+          (json['net_sales_minus_purchases'] ?? '0.00').toString(),
+    );
+  }
+}
+
+class ReportRecentTransaction {
+  const ReportRecentTransaction({
+    required this.id,
+    required this.reference,
+    required this.date,
+    required this.txType,
+    required this.txTypeLabel,
+    required this.totalAmount,
+    required this.amountPaid,
+    required this.amountDue,
+  });
+
+  final int id;
+  final String reference;
+  final String date;
+  final String txType;
+  final String txTypeLabel;
+  final String totalAmount;
+  final String amountPaid;
+  final String amountDue;
+
+  factory ReportRecentTransaction.fromJson(Map<String, dynamic> json) {
+    return ReportRecentTransaction(
+      id: int.tryParse((json['id'] ?? '0').toString()) ?? 0,
+      reference: (json['reference'] ?? '').toString(),
+      date: (json['date'] ?? '').toString(),
+      txType: (json['tx_type'] ?? '').toString(),
+      txTypeLabel: (json['tx_type_label'] ?? '').toString(),
+      totalAmount: (json['total_amount'] ?? '0.00').toString(),
+      amountPaid: (json['amount_paid'] ?? '0.00').toString(),
+      amountDue: (json['amount_due'] ?? '0.00').toString(),
     );
   }
 }

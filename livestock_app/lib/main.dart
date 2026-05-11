@@ -509,6 +509,14 @@ class HomePage extends StatelessWidget {
     return (auth.farm?['name'] ?? 'بدون منشأة').toString();
   }
 
+  void _openReports(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => ReportsPage(auth: auth),
+      ),
+    );
+  }
+
   Future<void> _logout(BuildContext context) async {
     final token = auth.token;
     final tokenStore = const TokenStore();
@@ -561,6 +569,11 @@ class HomePage extends StatelessWidget {
         appBar: AppBar(
           title: const Text('الرئيسية'),
           actions: <Widget>[
+            TextButton.icon(
+              onPressed: () => _openReports(context),
+              icon: const Icon(Icons.analytics),
+              label: const Text('التقارير'),
+            ),
             TextButton.icon(
               onPressed: () => _logout(context),
               icon: const Icon(Icons.logout),
@@ -640,6 +653,253 @@ class HomePage extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class ReportsPage extends StatefulWidget {
+  const ReportsPage({
+    super.key,
+    required this.auth,
+  });
+
+  final AuthResponse auth;
+
+  @override
+  State<ReportsPage> createState() => _ReportsPageState();
+}
+
+class _ReportsPageState extends State<ReportsPage> {
+  final _api = const AuthApi();
+
+  late Future<ReportsSummaryResponse> _summaryFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _summaryFuture = _loadSummary();
+  }
+
+  Future<ReportsSummaryResponse> _loadSummary() {
+    return _api.reportsSummary(token: widget.auth.token);
+  }
+
+  void _refresh() {
+    setState(() {
+      _summaryFuture = _loadSummary();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('التقارير'),
+          actions: <Widget>[
+            IconButton(
+              onPressed: _refresh,
+              icon: const Icon(Icons.refresh),
+              tooltip: 'تحديث',
+            ),
+          ],
+        ),
+        body: SafeArea(
+          child: FutureBuilder<ReportsSummaryResponse>(
+            future: _summaryFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+
+              if (snapshot.hasError) {
+                final error = snapshot.error;
+                final message = error is AuthApiException
+                    ? error.message
+                    : error.toString();
+
+                return Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      ErrorCard(message: 'خطأ: $message'),
+                      const SizedBox(height: 16),
+                      FilledButton(
+                        onPressed: _refresh,
+                        child: const Text('إعادة المحاولة'),
+                      ),
+                    ],
+                  ),
+                );
+              }
+
+              final summary = snapshot.data;
+              if (summary == null) {
+                return const Center(
+                  child: Text('لا توجد بيانات تقارير.'),
+                );
+              }
+
+              return ReportsContent(
+                summary: summary,
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class ReportsContent extends StatelessWidget {
+  const ReportsContent({
+    super.key,
+    required this.summary,
+  });
+
+  final ReportsSummaryResponse summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final totals = summary.totals;
+
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760),
+        child: ListView(
+          padding: const EdgeInsets.all(24),
+          children: <Widget>[
+            Text(
+              'التقارير',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              summary.farmName,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${summary.period.from} - ${summary.period.to}',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 24),
+            ReportMetricCard(
+              title: 'المخزون الحالي',
+              value: totals.currentStockQuantity,
+              subtitle: 'إجمالي الكمية',
+            ),
+            const SizedBox(height: 12),
+            ReportMetricCard(
+              title: 'إجمالي المشتريات',
+              value: totals.purchasesTotal,
+              subtitle: 'العدد: ${totals.purchasesCount}',
+            ),
+            const SizedBox(height: 12),
+            ReportMetricCard(
+              title: 'إجمالي المبيعات',
+              value: totals.salesTotal,
+              subtitle: 'العدد: ${totals.salesCount}',
+            ),
+            const SizedBox(height: 12),
+            ReportMetricCard(
+              title: 'الصافي',
+              value: totals.netSalesMinusPurchases,
+              subtitle: 'المبيعات - المشتريات',
+            ),
+            const SizedBox(height: 24),
+            Text(
+              'آخر العمليات',
+              style: Theme.of(context).textTheme.titleLarge,
+            ),
+            const SizedBox(height: 12),
+            RecentTransactionsList(
+              transactions: summary.recentTransactions,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class ReportMetricCard extends StatelessWidget {
+  const ReportMetricCard({
+    super.key,
+    required this.title,
+    required this.value,
+    required this.subtitle,
+  });
+
+  final String title;
+  final String value;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              title,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              value,
+              style: Theme.of(context).textTheme.headlineSmall,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class RecentTransactionsList extends StatelessWidget {
+  const RecentTransactionsList({
+    super.key,
+    required this.transactions,
+  });
+
+  final List<ReportRecentTransaction> transactions;
+
+  @override
+  Widget build(BuildContext context) {
+    if (transactions.isEmpty) {
+      return const Card(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Text('لا توجد عمليات حديثة.'),
+        ),
+      );
+    }
+
+    return Column(
+      children: transactions
+          .map(
+            (tx) => Card(
+              child: ListTile(
+                title: Text(tx.reference.isEmpty ? tx.txType : tx.reference),
+                subtitle: Text('${tx.date} ? ${tx.txTypeLabel}'),
+                trailing: Text(tx.totalAmount),
+              ),
+            ),
+          )
+          .toList(),
     );
   }
 }

@@ -58,6 +58,7 @@ void main() {
     expect(find.text('المخزون'), findsOneWidget);
     expect(find.text('شراء'), findsOneWidget);
     expect(find.text('بيع'), findsOneWidget);
+    expect(find.text('التقارير'), findsOneWidget);
     expect(find.text('خروج'), findsOneWidget);
   });
 
@@ -106,6 +107,80 @@ void main() {
     expect(find.text('منشأة المخزون'), findsOneWidget);
     expect(find.text('غنم'), findsOneWidget);
     expect(find.text('الإجمالي: 7.00'), findsOneWidget);
+  });
+
+  testWidgets('reports content renders summary totals', (tester) async {
+    const summary = ReportsSummaryResponse(
+      ok: true,
+      farm: <String, dynamic>{
+        'id': 1,
+        'name': 'منشأة التقارير',
+      },
+      period: ReportPeriod(
+        from: '2026-05-01',
+        to: '2026-05-11',
+      ),
+      totals: ReportTotals(
+        currentStockQuantity: '6.00',
+        purchasesCount: 1,
+        salesCount: 1,
+        purchasesTotal: '1000.00',
+        salesTotal: '1200.00',
+        netSalesMinusPurchases: '200.00',
+      ),
+      recentTransactions: <ReportRecentTransaction>[
+        ReportRecentTransaction(
+          id: 1,
+          reference: 'SO-20260511-000001',
+          date: '2026-05-11',
+          txType: 'SALE',
+          txTypeLabel: 'بيع',
+          totalAmount: '1200.00',
+          amountPaid: '1200.00',
+          amountDue: '0.00',
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Directionality(
+          textDirection: TextDirection.rtl,
+          child: ReportsContent(summary: summary),
+        ),
+      ),
+    );
+
+    expect(find.text('التقارير'), findsOneWidget);
+    expect(find.text('منشأة التقارير'), findsOneWidget);
+    expect(find.text('المخزون الحالي'), findsOneWidget);
+    expect(find.text('إجمالي المشتريات'), findsOneWidget);
+    expect(find.text('إجمالي المبيعات'), findsOneWidget);
+    expect(find.text('الصافي'), findsOneWidget);
+    expect(find.text('6.00'), findsOneWidget);
+    expect(find.text('1000.00'), findsOneWidget);
+    expect(find.text('1200.00'), findsWidgets);
+    expect(find.text('200.00'), findsOneWidget);
+
+    final reportsScrollable = find.descendant(
+      of: find.byType(ReportsContent),
+      matching: find.byWidgetPredicate(
+        (widget) =>
+            widget is Scrollable &&
+            widget.axisDirection == AxisDirection.down,
+      ),
+    );
+    expect(reportsScrollable, findsOneWidget);
+
+    final recentTransactionsTitle = find.text('آخر العمليات');
+    await tester.scrollUntilVisible(
+      recentTransactionsTitle,
+      200,
+      scrollable: reportsScrollable,
+    );
+
+    expect(recentTransactionsTitle, findsOneWidget);
+    expect(find.text('SO-20260511-000001'), findsOneWidget);
   });
 
   testWidgets('purchase screen opens from home', (tester) async {
