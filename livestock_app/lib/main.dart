@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'api/auth_api.dart';
 import 'auth/token_store.dart';
+import 'theme/app_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,10 +17,7 @@ class LivestockApp extends StatelessWidget {
     return MaterialApp(
       title: 'محاسبة المواشي',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: Colors.green,
-      ),
+      theme: AppTheme.dark,
       home: const AuthGate(),
     );
   }
