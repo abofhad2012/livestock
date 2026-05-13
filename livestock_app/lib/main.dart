@@ -91,6 +91,118 @@ class _AuthGateState extends State<AuthGate> {
   }
 }
 
+class SiteBrandHeader extends StatelessWidget {
+  const SiteBrandHeader({
+    super.key,
+    required this.title,
+    required this.subtitle,
+  });
+
+  final String title;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: <Widget>[
+        Container(
+          width: 72,
+          height: 72,
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceAlt,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: AppTheme.border),
+            boxShadow: <BoxShadow>[
+              BoxShadow(
+                color: AppTheme.primary.withValues(alpha: 0.18),
+                blurRadius: 28,
+                offset: const Offset(0, 12),
+              ),
+            ],
+          ),
+          child: const Center(
+            child: Text(
+              '🐑',
+              style: TextStyle(fontSize: 34),
+            ),
+          ),
+        ),
+        const SizedBox(height: 22),
+        Text(
+          title,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontSize: 30,
+                color: AppTheme.primary,
+                fontWeight: FontWeight.w900,
+              ),
+        ),
+        const SizedBox(height: 10),
+        Text(
+          subtitle,
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: AppTheme.muted,
+                height: 1.7,
+              ),
+        ),
+      ],
+    );
+  }
+}
+
+class AuthPanel extends StatelessWidget {
+  const AuthPanel({
+    super.key,
+    required this.children,
+  });
+
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Directionality(
+      textDirection: TextDirection.rtl,
+      child: Scaffold(
+        body: SafeArea(
+          child: DecoratedBox(
+            decoration: const BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment.topCenter,
+                radius: 1.3,
+                colors: <Color>[
+                  Color(0xFF0F2D47),
+                  AppTheme.background,
+                ],
+              ),
+            ),
+            child: Center(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(22),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 520),
+                  child: Card(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 26,
+                        vertical: 34,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: children,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -102,6 +214,7 @@ class _LoginPageState extends State<LoginPage> {
   final _api = const AuthApi();
   final _tokenStore = const TokenStore();
   final _formKey = GlobalKey<FormState>();
+
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
 
@@ -113,6 +226,13 @@ class _LoginPageState extends State<LoginPage> {
     _usernameController.dispose();
     _passwordController.dispose();
     super.dispose();
+  }
+
+  String? _required(String? value, String message) {
+    if (value == null || value.trim().isEmpty) {
+      return message;
+    }
+    return null;
   }
 
   Future<void> _submit() async {
@@ -137,7 +257,11 @@ class _LoginPageState extends State<LoginPage> {
         return;
       }
 
-      openHome(context, response);
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute<void>(
+          builder: (_) => HomePage(auth: response),
+        ),
+      );
     } on AuthApiException catch (error) {
       if (!mounted) {
         return;
@@ -173,96 +297,74 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('محاسبة المواشي'),
+    return AuthPanel(
+      children: <Widget>[
+        const SiteBrandHeader(
+          title: 'محاسبة المواشي',
+          subtitle: 'إدارة عمليات الشراء والبيع والتقارير الخاصة بمنشأتك.',
         ),
-        body: SafeArea(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Form(
-                  key: _formKey,
-                  child: ListView(
-                    shrinkWrap: true,
-                    children: <Widget>[
-                      const Text(
-                        'تسجيل الدخول',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'الخادم: ${AuthApi.baseUrl}',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 32),
-                      TextFormField(
-                        controller: _usernameController,
-                        textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
-                          labelText: 'اسم المستخدم',
-                        ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'اكتب اسم المستخدم';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _passwordController,
-                        obscureText: true,
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
-                          labelText: 'كلمة المرور',
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'اكتب كلمة المرور';
-                          }
-                          return null;
-                        },
-                        onFieldSubmitted: (_) => _submit(),
-                      ),
-                      const SizedBox(height: 24),
-                      FilledButton(
-                        onPressed: _isLoading ? null : _submit,
-                        child: _isLoading
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Text('دخول'),
-                      ),
-                      const SizedBox(height: 12),
-                      TextButton(
-                        onPressed: _isLoading ? null : _openRegister,
-                        child: const Text('إنشاء حساب جديد'),
-                      ),
-                      if (_errorMessage != null) ...[
-                        const SizedBox(height: 24),
-                        ErrorCard(message: _errorMessage!),
-                      ],
-                    ],
-                  ),
+        const SizedBox(height: 30),
+        Text(
+          'تسجيل الدخول',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontSize: 28,
+                color: AppTheme.primary,
+              ),
+        ),
+        const SizedBox(height: 26),
+        Form(
+          key: _formKey,
+          child: Column(
+            children: <Widget>[
+              TextFormField(
+                controller: _usernameController,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'اسم المستخدم',
+                ),
+                validator: (value) => _required(
+                  value,
+                  'اكتب اسم المستخدم',
                 ),
               ),
-            ),
+              const SizedBox(height: 16),
+              TextFormField(
+                controller: _passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'كلمة المرور',
+                ),
+                validator: (value) => _required(
+                  value,
+                  'اكتب كلمة المرور',
+                ),
+                onFieldSubmitted: (_) => _submit(),
+              ),
+              const SizedBox(height: 22),
+              FilledButton(
+                onPressed: _isLoading ? null : _submit,
+                child: _isLoading
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('دخول'),
+              ),
+            ],
           ),
         ),
-      ),
+        if (_errorMessage != null) ...[
+          const SizedBox(height: 20),
+          ErrorCard(message: _errorMessage!),
+        ],
+        const SizedBox(height: 22),
+        TextButton(
+          onPressed: _isLoading ? null : _openRegister,
+          child: const Text('إنشاء حساب جديد'),
+        ),
+      ],
     );
   }
 }
@@ -298,6 +400,13 @@ class _RegisterPageState extends State<RegisterPage> {
     super.dispose();
   }
 
+  String? _required(String? value, String message) {
+    if (value == null || value.trim().isEmpty) {
+      return message;
+    }
+    return null;
+  }
+
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -323,7 +432,12 @@ class _RegisterPageState extends State<RegisterPage> {
         return;
       }
 
-      openHome(context, response);
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute<void>(
+          builder: (_) => HomePage(auth: response),
+        ),
+        (Route<dynamic> route) => false,
+      );
     } on AuthApiException catch (error) {
       if (!mounted) {
         return;
@@ -349,140 +463,103 @@ class _RegisterPageState extends State<RegisterPage> {
     }
   }
 
-  String? _required(String? value, String message) {
-    if (value == null || value.trim().isEmpty) {
-      return message;
-    }
-    return null;
-  }
-
-  String? _passwordValidator(String? value) {
-    if (value == null || value.isEmpty) {
-      return 'اكتب كلمة المرور';
-    }
-    if (value.length < 8) {
-      return 'كلمة المرور يجب ألا تقل عن 8 أحرف';
-    }
-    return null;
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Directionality(
-      textDirection: TextDirection.rtl,
-      child: Scaffold(
-        appBar: AppBar(
-          title: const Text('تسجيل حساب جديد'),
+    return AuthPanel(
+      children: <Widget>[
+        const SiteBrandHeader(
+          title: 'محاسبة المواشي',
+          subtitle: 'أنشئ حسابك واربطه بمنشأة مستقلة لإدارة العمليات والتقارير.',
         ),
-        body: SafeArea(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 460),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Form(
-                  key: _formKey,
-                  child: ListView(
-                    shrinkWrap: true,
-                    children: <Widget>[
-                      const Text(
-                        'تسجيل حساب جديد',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'الخادم: ${AuthApi.baseUrl}',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 32),
-                      TextFormField(
-                        controller: _usernameController,
-                        textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
-                          labelText: 'اسم المستخدم',
-                        ),
-                        validator: (value) => _required(
-                          value,
-                          'اكتب اسم المستخدم',
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _passwordController,
-                        obscureText: true,
-                        textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
-                          labelText: 'كلمة المرور',
-                        ),
-                        validator: _passwordValidator,
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _fullNameController,
-                        textInputAction: TextInputAction.next,
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
-                          labelText: 'الاسم الكامل',
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _phoneController,
-                        textInputAction: TextInputAction.next,
-                        keyboardType: TextInputType.phone,
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
-                          labelText: 'رقم الجوال',
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _farmNameController,
-                        decoration: const InputDecoration(
-                          border: OutlineInputBorder(),
-                          labelText: 'اسم المنشأة',
-                        ),
-                        validator: (value) => _required(
-                          value,
-                          'اكتب اسم المنشأة',
-                        ),
-                        onFieldSubmitted: (_) => _submit(),
-                      ),
-                      const SizedBox(height: 24),
-                      FilledButton(
-                        onPressed: _isLoading ? null : _submit,
-                        child: _isLoading
-                            ? const SizedBox(
-                                width: 22,
-                                height: 22,
-                                child: CircularProgressIndicator(strokeWidth: 2),
-                              )
-                            : const Text('إنشاء الحساب'),
-                      ),
-                      const SizedBox(height: 12),
-                      TextButton(
-                        onPressed: _isLoading ? null : () => Navigator.pop(context),
-                        child: const Text('العودة لتسجيل الدخول'),
-                      ),
-                      if (_errorMessage != null) ...[
-                        const SizedBox(height: 24),
-                        ErrorCard(message: _errorMessage!),
-                      ],
-                    ],
-                  ),
+        const SizedBox(height: 30),
+        Text(
+          'تسجيل حساب جديد',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                fontSize: 26,
+                color: AppTheme.primary,
+              ),
+        ),
+        const SizedBox(height: 24),
+        Form(
+          key: _formKey,
+          child: Column(
+            children: <Widget>[
+              TextFormField(
+                controller: _usernameController,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'اسم المستخدم',
+                ),
+                validator: (value) => _required(
+                  value,
+                  'اكتب اسم المستخدم',
                 ),
               ),
-            ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _passwordController,
+                obscureText: true,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'كلمة المرور',
+                ),
+                validator: (value) => _required(
+                  value,
+                  'اكتب كلمة المرور',
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _fullNameController,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'الاسم الكامل',
+                ),
+                validator: (value) => _required(
+                  value,
+                  'اكتب الاسم الكامل',
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _phoneController,
+                textInputAction: TextInputAction.next,
+                decoration: const InputDecoration(
+                  labelText: 'رقم الجوال',
+                ),
+              ),
+              const SizedBox(height: 14),
+              TextFormField(
+                controller: _farmNameController,
+                decoration: const InputDecoration(
+                  labelText: 'اسم المنشأة',
+                ),
+                validator: (value) => _required(
+                  value,
+                  'اكتب اسم المنشأة',
+                ),
+                onFieldSubmitted: (_) => _submit(),
+              ),
+              const SizedBox(height: 22),
+              FilledButton(
+                onPressed: _isLoading ? null : _submit,
+                child: _isLoading
+                    ? const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('إنشاء الحساب'),
+              ),
+            ],
           ),
         ),
-      ),
+        if (_errorMessage != null) ...[
+          const SizedBox(height: 20),
+          ErrorCard(message: _errorMessage!),
+        ],
+      ],
     );
   }
 }
@@ -495,16 +572,36 @@ class HomePage extends StatelessWidget {
 
   final AuthResponse auth;
 
-  String get username {
-    final fullName = (auth.user['full_name'] ?? '').toString().trim();
-    if (fullName.isNotEmpty) {
-      return fullName;
-    }
-    return (auth.user['username'] ?? 'مستخدم').toString();
+  String get _fullName {
+    return (auth.user['full_name'] ?? auth.user['username'] ?? '').toString();
   }
 
-  String get farmName {
-    return (auth.farm?['name'] ?? 'بدون منشأة').toString();
+  String get _farmName {
+    return (auth.farm?['name'] ?? '').toString();
+  }
+
+  void _openStock(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => StockPage(auth: auth),
+      ),
+    );
+  }
+
+  void _openPurchase(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PurchasePage(auth: auth),
+      ),
+    );
+  }
+
+  void _openSale(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => SalePage(auth: auth),
+      ),
+    );
   }
 
   void _openReports(BuildContext context) {
@@ -543,21 +640,30 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final features = <HomeFeature>[
-      const HomeFeature(
+    final actions = <HomeDashboardAction>[
+      HomeDashboardAction(
         title: 'المخزون',
-        subtitle: 'عرض مخزون المواشي',
+        subtitle: 'عرض الكميات الحالية حسب النوع',
         icon: Icons.inventory_2_outlined,
+        onPressed: () => _openStock(context),
       ),
-      const HomeFeature(
+      HomeDashboardAction(
         title: 'شراء',
-        subtitle: 'تسجيل عملية شراء',
+        subtitle: 'تسجيل مشتريات جديدة للمزرعة',
         icon: Icons.add_shopping_cart,
+        onPressed: () => _openPurchase(context),
       ),
-      const HomeFeature(
+      HomeDashboardAction(
         title: 'بيع',
-        subtitle: 'تسجيل عملية بيع',
+        subtitle: 'تسجيل بيع مع خصم المخزون',
         icon: Icons.point_of_sale,
+        onPressed: () => _openSale(context),
+      ),
+      HomeDashboardAction(
+        title: 'التقارير',
+        subtitle: 'ملخص المشتريات والمبيعات وآخر العمليات',
+        icon: Icons.analytics_outlined,
+        onPressed: () => _openReports(context),
       ),
     ];
 
@@ -568,11 +674,6 @@ class HomePage extends StatelessWidget {
           title: const Text('الرئيسية'),
           actions: <Widget>[
             TextButton.icon(
-              onPressed: () => _openReports(context),
-              icon: const Icon(Icons.analytics),
-              label: const Text('التقارير'),
-            ),
-            TextButton.icon(
               onPressed: () => _logout(context),
               icon: const Icon(Icons.logout),
               label: const Text('خروج'),
@@ -580,74 +681,161 @@ class HomePage extends StatelessWidget {
           ],
         ),
         body: SafeArea(
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 760),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: ListView(
-                  children: <Widget>[
-                    Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: <Widget>[
-                            Text(
-                              'مرحبًا',
-                              style: Theme.of(context).textTheme.headlineSmall,
-                            ),
-                            const SizedBox(height: 16),
-                            InfoRow(label: 'المستخدم', value: username),
-                            const SizedBox(height: 8),
-                            InfoRow(label: 'المنشأة', value: farmName),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      'العمليات',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 12),
-                    HomeFeatureCard(
-                      feature: features[0],
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => StockPage(auth: auth),
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    HomeFeatureCard(
-                      feature: features[1],
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => PurchasePage(auth: auth),
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    HomeFeatureCard(
-                      feature: features[2],
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => SalePage(auth: auth),
-                          ),
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                  ],
-                ),
+          child: DecoratedBox(
+            decoration: const BoxDecoration(
+              gradient: RadialGradient(
+                center: Alignment.topCenter,
+                radius: 1.25,
+                colors: <Color>[
+                  Color(0xFF0F2D47),
+                  AppTheme.background,
+                ],
               ),
             ),
+            child: ListView(
+              padding: const EdgeInsets.all(22),
+              children: <Widget>[
+                Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 900),
+                    child: Column(
+                      children: <Widget>[
+                        Card(
+                          child: Padding(
+                            padding: const EdgeInsets.all(22),
+                            child: Column(
+                              children: <Widget>[
+                                Container(
+                                  width: 62,
+                                  height: 62,
+                                  decoration: BoxDecoration(
+                                    color: AppTheme.surfaceAlt,
+                                    borderRadius: BorderRadius.circular(22),
+                                    border: Border.all(color: AppTheme.border),
+                                  ),
+                                  child: const Center(
+                                    child: Text(
+                                      '🐑',
+                                      style: TextStyle(fontSize: 30),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'محاسبة المواشي',
+                                  textAlign: TextAlign.center,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .headlineSmall
+                                      ?.copyWith(
+                                        color: AppTheme.primary,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  _fullName,
+                                  textAlign: TextAlign.center,
+                                  style: Theme.of(context).textTheme.titleLarge,
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _farmName,
+                                  textAlign: TextAlign.center,
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                        color: AppTheme.muted,
+                                      ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        GridView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          gridDelegate:
+                              const SliverGridDelegateWithMaxCrossAxisExtent(
+                            maxCrossAxisExtent: 260,
+                            mainAxisSpacing: 14,
+                            crossAxisSpacing: 14,
+                            mainAxisExtent: 148,
+                          ),
+                          itemCount: actions.length,
+                          itemBuilder: (context, index) {
+                            return HomeDashboardCard(action: actions[index]);
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class HomeDashboardAction {
+  const HomeDashboardAction({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.onPressed,
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final VoidCallback onPressed;
+}
+
+class HomeDashboardCard extends StatelessWidget {
+  const HomeDashboardCard({
+    super.key,
+    required this.action,
+  });
+
+  final HomeDashboardAction action;
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
+        onTap: action.onPressed,
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              Icon(
+                action.icon,
+                color: AppTheme.primary,
+                size: 32,
+              ),
+              const Spacer(),
+              Text(
+                action.title,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: AppTheme.text,
+                      fontWeight: FontWeight.w900,
+                    ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                action.subtitle,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppTheme.muted,
+                      height: 1.35,
+                    ),
+              ),
+            ],
           ),
         ),
       ),
